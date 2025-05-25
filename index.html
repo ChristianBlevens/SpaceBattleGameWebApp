@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Wars: Reimagined</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Game-Oriented CSS Libraries -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/nes.css@2.3.0/css/nes.min.css" rel="stylesheet">
+    
+    <!-- Icon Libraries -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Alpine.js for reactivity -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    
+    <!-- Phaser 3 - Professional HTML5 Game Framework -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    
+    <!-- Matter.js for physics (if needed alongside Phaser) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    
+    <!-- Hammer.js for touch controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    
+    <!-- Howler.js for game audio -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    
+    <!-- Particle.js for background effects -->
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    
+    <!-- GSAP for advanced animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <!-- Game Styles -->
+    <link rel="stylesheet" href="css/game.css">
+    
+    <!-- Core Game Systems -->
+    <script src="js/EventBus.js"></script>
+    <script src="js/GameState.js"></script>
+    <script src="js/EntityManager.js"></script>
+    
+    <!-- Factory and Utilities -->
+    <script src="js/EntityFactory.js"></script>
+    
+    <!-- Game Systems -->
+    <script src="js/PhysicsSystem.js"></script>
+    <script src="js/WeaponSystem.js"></script>
+    <script src="js/AISystem.js"></script>
+    <script src="js/WaveSystem.js"></script>
+    <script src="js/EffectsSystem.js"></script>
+    <script src="js/InputSystem.js"></script>
+    <script src="js/RenderSystem.js"></script>
+    
+    <!-- Game Scenes -->
+    <script src="js/BootScene.js"></script>
+    <script src="js/MenuScene.js"></script>
+    <script src="js/GameScene.js"></script>
+    
+    <!-- UI Manager -->
+    <script src="js/UIManager.js"></script>
+    
+    <!-- Main Game Entry -->
+    <script src="js/main.js" defer></script>
+</head>
+<body>
+    <!-- Particles.js Background -->
+    <div id="particles-js"></div>
+    
+    <!-- Phaser Game Container -->
+    <div id="game-container"></div>
+    
+    <!-- UI Overlay -->
+    <div id="ui-overlay" x-data="gameUI">
+        <!-- HUD Panel -->
+        <div class="hud-panel glass-effect animate__animated animate__fadeIn">
+            <!-- Player Status -->
+            <div class="player-status">
+                <div class="status-bars">
+                    <!-- Health Bar -->
+                    <div class="bar-container">
+                        <i class="fas fa-heart bar-icon"></i>
+                        <div class="bar health-bar">
+                            <div class="bar-fill health-fill" 
+                                 :style="`width: ${(health/maxHealth)*100}%`"
+                                 :class="{ 'low': health < maxHealth * 0.3 }">
+                            </div>
+                            <span class="bar-text" x-text="`${Math.ceil(health)}/${maxHealth}`"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Energy Bar -->
+                    <div class="bar-container">
+                        <i class="fas fa-bolt bar-icon energy-icon"></i>
+                        <div class="bar energy-bar">
+                            <div class="bar-fill energy-fill" 
+                                 :style="`width: ${(energy/maxEnergy)*100}%`">
+                            </div>
+                            <span class="bar-text" x-text="`${Math.ceil(energy)}/${maxEnergy}`"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats Display -->
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <i class="fas fa-coins"></i>
+                        <span x-text="credits.toLocaleString()"></span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-fire"></i>
+                        <span x-text="`x${combo}`"></span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-trophy"></i>
+                        <span x-text="score.toLocaleString()"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Upgrade Quick Bar -->
+            <div class="upgrade-bar" x-show="credits >= cheapestUpgrade">
+                <button class="upgrade-btn nes-btn is-primary" 
+                        @click="quickUpgrade('damage')"
+                        :disabled="credits < upgradeCosts.damage">
+                    <i class="fas fa-sword"></i> DMG (<span x-text="upgradeCosts.damage"></span>)
+                </button>
+                <button class="upgrade-btn nes-btn is-success" 
+                        @click="quickUpgrade('speed')"
+                        :disabled="credits < upgradeCosts.speed">
+                    <i class="fas fa-rocket"></i> SPD (<span x-text="upgradeCosts.speed"></span>)
+                </button>
+                <button class="upgrade-btn nes-btn is-warning" 
+                        @click="quickUpgrade('defense')"
+                        :disabled="credits < upgradeCosts.defense">
+                    <i class="fas fa-shield-alt"></i> DEF (<span x-text="upgradeCosts.defense"></span>)
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mission Tracker -->
+        <div class="mission-panel glass-effect animate__animated animate__fadeInRight"
+             x-show="activeMission"
+             x-transition>
+            <h3 class="mission-title">
+                <i class="fas fa-flag"></i>
+                <span x-text="activeMission?.name"></span>
+            </h3>
+            <div class="mission-objectives">
+                <template x-for="objective in activeMission?.objectives || []">
+                    <div class="objective-item" :class="{ 'completed': objective.completed }">
+                        <i class="fas" :class="objective.completed ? 'fa-check-circle' : 'fa-circle'"></i>
+                        <span x-text="objective.description"></span>
+                        <span class="objective-progress" x-show="!objective.completed">
+                            (<span x-text="objective.current"></span>/<span x-text="objective.target"></span>)
+                        </span>
+                    </div>
+                </template>
+            </div>
+            <div class="mission-rewards" x-show="activeMission?.rewards">
+                <span class="reward-label">Rewards:</span>
+                <span class="reward-value">
+                    <i class="fas fa-coins"></i> <span x-text="activeMission?.rewards?.credits || 0"></span>
+                </span>
+            </div>
+        </div>
+        
+        <!-- Ability Cooldowns -->
+        <div class="ability-bar">
+            <template x-for="(ability, index) in abilities" :key="ability.id">
+                <div class="ability-slot" 
+                     :class="{ 
+                         'on-cooldown': ability.cooldownRemaining > 0,
+                         'ready': ability.cooldownRemaining <= 0 && energy >= ability.cost,
+                         'no-energy': ability.cooldownRemaining <= 0 && energy < ability.cost
+                     }">
+                    <div class="ability-icon">
+                        <i class="fas" :class="ability.icon"></i>
+                    </div>
+                    <div class="ability-cooldown" x-show="ability.cooldownRemaining > 0">
+                        <span x-text="Math.ceil(ability.cooldownRemaining / 1000)"></span>
+                    </div>
+                    <div class="ability-key">
+                        <span x-text="index + 1"></span>
+                    </div>
+                    <div class="ability-cost">
+                        <span x-text="ability.cost"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+        
+        <!-- Charge Indicator -->
+        <div class="charge-indicator" x-show="charging" x-transition>
+            <div class="charge-ring">
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="45" 
+                            stroke-dasharray="283"
+                            :stroke-dashoffset="283 - (283 * chargePercent / 100)"
+                            class="charge-progress"/>
+                </svg>
+                <div class="charge-text">
+                    <span x-text="`${Math.round(chargePercent)}%`"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Combo Display -->
+        <div class="combo-display animate__animated"
+             x-show="combo > 1"
+             :class="comboAnimation">
+            <div class="combo-text">
+                <span class="combo-label">COMBO</span>
+                <span class="combo-value">x<span x-text="combo"></span></span>
+            </div>
+            <div class="combo-timer">
+                <div class="combo-timer-fill" :style="`width: ${(comboTimer/maxComboTimer)*100}%`"></div>
+            </div>
+        </div>
+        
+        <!-- Event Notifications -->
+        <div class="event-notifications">
+            <template x-for="event in events" :key="event.id">
+                <div class="event-notification animate__animated animate__fadeInUp"
+                     :class="`event-${event.type}`"
+                     x-show="event.visible"
+                     x-transition>
+                    <i class="fas" :class="event.icon"></i>
+                    <span x-text="event.message"></span>
+                </div>
+            </template>
+        </div>
+        
+        <!-- Wave Indicator -->
+        <div class="wave-indicator" x-show="waveInProgress">
+            <h2 class="wave-title animate__animated animate__pulse animate__infinite">
+                WAVE <span x-text="currentWave"></span>
+            </h2>
+            <div class="wave-progress">
+                <span x-text="`${enemiesDefeated}/${totalEnemies} Enemies`"></span>
+            </div>
+        </div>
+        
+        <!-- Game Over Screen -->
+        <div class="game-over-overlay" x-show="gameOver" x-transition>
+            <div class="game-over-content nes-container is-dark animate__animated animate__zoomIn">
+                <h1 class="game-over-title">
+                    <span x-text="victory ? 'VICTORY!' : 'GAME OVER'"></span>
+                </h1>
+                
+                <div class="final-stats">
+                    <div class="stat-row">
+                        <span>Final Score:</span>
+                        <span x-text="score.toLocaleString()"></span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Waves Completed:</span>
+                        <span x-text="wavesCompleted"></span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Enemies Defeated:</span>
+                        <span x-text="totalKills"></span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Max Combo:</span>
+                        <span x-text="`x${maxCombo}`"></span>
+                    </div>
+                </div>
+                
+                <div class="game-over-buttons">
+                    <button class="nes-btn is-primary" @click="restartGame()">
+                        <i class="fas fa-redo"></i> Play Again
+                    </button>
+                    <button class="nes-btn" @click="returnToMenu()">
+                        <i class="fas fa-home"></i> Main Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pause Menu -->
+        <div class="pause-overlay" x-show="paused" x-transition>
+            <div class="pause-content nes-container is-dark">
+                <h2>PAUSED</h2>
+                <div class="pause-buttons">
+                    <button class="nes-btn is-primary" @click="resumeGame()">
+                        <i class="fas fa-play"></i> Resume
+                    </button>
+                    <button class="nes-btn" @click="toggleSound()">
+                        <i class="fas" :class="soundEnabled ? 'fa-volume-up' : 'fa-volume-mute'"></i>
+                        <span x-text="soundEnabled ? 'Mute' : 'Unmute'"></span>
+                    </button>
+                    <button class="nes-btn is-error" @click="quitToMenu()">
+                        <i class="fas fa-sign-out-alt"></i> Quit to Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
