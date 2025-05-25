@@ -39,6 +39,9 @@ class EventBus {
     
     // Emit an event immediately
     emit(event, ...args) {
+        // Log all events
+        console.log(`[EventBus] Event: ${event}`, args[0] || '');
+        
         const listeners = this.events.get(event);
         if (listeners) {
             listeners.forEach(listener => {
@@ -92,14 +95,17 @@ const GameEvents = {
     PLAYER_HEAL: 'player:heal',
     PLAYER_DEATH: 'player:death',
     PLAYER_SHOOT: 'player:shoot',
+    PLAYER_SHOOT_REQUEST: 'player:shoot_request',
     PLAYER_UPGRADE: 'player:upgrade',
     PLAYER_ABILITY: 'player:ability',
+    PLAYER_CHARGE_UPDATE: 'player:charge_update',
     
     // Enemy events
     ENEMY_SPAWN: 'enemy:spawn',
     ENEMY_DEATH: 'enemy:death',
     ENEMY_DAMAGE: 'enemy:damage',
     ENEMY_SHOOT: 'enemy:shoot',
+    ENEMY_SHOOT_REQUEST: 'enemy:shoot_request',
     
     // Game state events
     GAME_START: 'game:start',
@@ -125,14 +131,27 @@ const GameEvents = {
     // Combat events
     COLLISION: 'combat:collision',
     PROJECTILE_HIT: 'combat:projectile_hit',
+    PROJECTILE_CREATED: 'combat:projectile_created',
+    PROJECTILE_DESTROYED: 'combat:projectile_destroyed',
     EXPLOSION: 'combat:explosion',
     COMBO_INCREASE: 'combat:combo_increase',
     COMBO_BREAK: 'combat:combo_break',
+    
+    // Effect events
+    EFFECT_EXPLOSION: 'effect:explosion',
+    EFFECT_SPAWN: 'effect:spawn',
+    EFFECT_IMPACT: 'effect:impact',
+    EFFECT_SHOCKWAVE: 'effect:shockwave',
+    EFFECT_TRAIL: 'effect:trail',
     
     // UI events
     UI_UPDATE: 'ui:update',
     UI_NOTIFICATION: 'ui:notification',
     UI_SHAKE: 'ui:shake',
+    UI_FLASH: 'ui:flash',
+    UI_SHOW_MESSAGE: 'ui:show_message',
+    UI_HIDE_MESSAGE: 'ui:hide_message',
+    UI_UPDATE_CHARGE: 'ui:update_charge',
     
     // Audio events
     AUDIO_PLAY: 'audio:play',
@@ -142,7 +161,12 @@ const GameEvents = {
     // Physics events
     GRAVITY_WELL: 'physics:gravity_well',
     FORCE_APPLIED: 'physics:force_applied',
-    BOUNDARY_WRAP: 'physics:boundary_wrap'
+    BOUNDARY_WRAP: 'physics:boundary_wrap',
+    COLLISION_DETECTED: 'physics:collision_detected',
+    
+    // Entity events
+    ENTITY_CREATED: 'entity:created',
+    ENTITY_DESTROYED: 'entity:destroyed'
 };
 
 // Create singleton instance
