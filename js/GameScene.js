@@ -1,4 +1,5 @@
-// GameScene.js - Main game scene coordinator (Refactored)
+// GameScene.js - Main game scene coordinator
+// REFACTORED: Now acts purely as a coordinator, delegating all logic to systems
 
 class GameScene extends Phaser.Scene {
     constructor() {
@@ -11,6 +12,13 @@ class GameScene extends Phaser.Scene {
         
         // Game entities
         this.player = null;
+        
+        // Entity collections
+        this.sprites = new Map();
+        this.trails = new Map();
+        this.enemyGroup = null;
+        this.powerupGroup = null;
+        this.projectileGroup = null;
         
         // Systems
         this.systems = {};
@@ -25,6 +33,13 @@ class GameScene extends Phaser.Scene {
         // Reset state
         this.gameState.reset();
         this.entityManager.clear();
+        
+        // Initialize collections
+        this.sprites = new Map();
+        this.trails = new Map();
+        this.enemyGroup = this.add.group();
+        this.powerupGroup = this.add.group();
+        this.projectileGroup = this.add.group();
         
         // Configure physics world
         this.matter.world.setBounds(0, 0, GameConfig.world.width, GameConfig.world.height);
@@ -42,7 +57,10 @@ class GameScene extends Phaser.Scene {
         // Setup event listeners
         this.setupEventListeners();
         
-        // Start gameplay
+        // Start game
+        window.EventBus.emit(window.GameEvents.GAME_START);
+        
+        // Start first wave after delay
         this.time.delayedCall(2000, () => {
             this.systems.wave.startWave(1);
         });
@@ -57,26 +75,21 @@ class GameScene extends Phaser.Scene {
     update(time, delta) {
         if (this.gameState.get('game.paused')) return;
         
-        // Update all systems
         const dt = delta / 1000;
         
+        // Update systems in correct order
         this.systems.input.update(dt);
         this.systems.physics.update(dt, this.entityManager);
-        this.systems.combat.update(dt, this.entityManager);
-        this.systems.weapon.update(dt, this.entityManager);
         this.systems.ai.update(dt, this.entityManager);
+        this.systems.weapon.update(dt, this.entityManager);
+        this.systems.combat.update(dt, this.entityManager);
         this.systems.wave.update(dt);
-        this.systems.effects.update(dt, this.entityManager);
-        this.systems.render.update(dt);
+        this.systems.ability.update(dt);
+        this.systems.render.update(dt);  // Now handles both rendering and effects
         
         // Update game time
         const playTime = this.gameState.get('game.playTime') + delta;
         this.gameState.update('game.playTime', playTime);
-        
-        // Check game state
-        if (!this.gameState.get('player.alive') && !this.gameState.get('game.gameOver')) {
-            this.handleGameOver();
-        }
     }
     
     initializeSystems() {
@@ -90,14 +103,13 @@ class GameScene extends Phaser.Scene {
             weapon: new WeaponSystem(this),
             ai: new AISystem(this),
             wave: new WaveSystem(this),
-            effects: new EffectsSystem(this),
             input: new InputSystem(this),
-            render: new RenderSystem(this),
-            ability: new AbilitySystem(this)
+            render: new RenderSystem(this),  // Now includes effects functionality
+            ability: new AbilitySystem(this)  // Now includes upgrade functionality
         };
         
         // Initialize UIManager with scene reference
-        window.UIManager.init(this);
+        window.UIManager.init();
         
         // Initialize systems with dependencies
         Object.values(this.systems).forEach(system => {
@@ -105,13 +117,6 @@ class GameScene extends Phaser.Scene {
                 system.init(this.entityManager);
             }
         });
-        
-        // Add update systems to entity manager
-        this.entityManager.addSystem(this.systems.physics);
-        this.entityManager.addSystem(this.systems.combat);
-        this.entityManager.addSystem(this.systems.weapon);
-        this.entityManager.addSystem(this.systems.ai);
-        this.entityManager.addSystem(this.systems.effects);
     }
     
     createInitialEntities() {
@@ -155,37 +160,25 @@ class GameScene extends Phaser.Scene {
     }
     
     setupEventListeners() {
-        // Combat events - delegate to CombatSystem
-        this.eventBus.on(GameEvents.PROJECTILE_HIT, (data) => {
-            this.systems.combat.handleProjectileHit(data);
-        });
-        
-        this.eventBus.on(GameEvents.ENEMY_DEATH, (data) => {
-            this.systems.combat.handleEnemyDeath(data);
-        });
-        
-        this.eventBus.on(GameEvents.PLAYER_DEATH, () => {
-            this.systems.combat.handlePlayerDeath();
-        });
-        
-        // Pickup events - delegate to CombatSystem
-        this.eventBus.on(GameEvents.PICKUP_COLLECT, (data) => {
-            this.systems.combat.handlePickupCollect(data);
-        });
-        
-        // Ability events - delegate to AbilitySystem
-        this.eventBus.on(GameEvents.PLAYER_ABILITY, (data) => {
-            this.systems.ability.activateAbility(data.ability);
-        });
-        
         // Game state events
-        this.eventBus.on(GameEvents.GAME_PAUSE, (data) => {
-            this.handlePause(data);
+        this.eventBus.on(window.GameEvents.GAME_PAUSE, (data) => {
+            this.handlePause(data.paused);
         });
         
         // Wave events
-        this.eventBus.on(GameEvents.WAVE_COMPLETE, () => {
+        this.eventBus.on(window.GameEvents.WAVE_COMPLETE, () => {
             this.handleWaveComplete();
+        });
+        
+        // Entity lifecycle events
+        this.eventBus.on(window.GameEvents.DESTROY_ENTITY, (data) => {
+            this.entityManager.destroyEntity(data.entityId);
+        });
+        
+        // Powerup spawning
+        this.eventBus.on(window.GameEvents.SPAWN_POWERUP, (data) => {
+            const factory = new EntityFactory(this);
+            factory.createPowerup(data.x, data.y, data.type);
         });
         
         // UI commands
@@ -194,8 +187,10 @@ class GameScene extends Phaser.Scene {
         });
     }
     
-    handlePause(data) {
-        if (data.paused) {
+    handlePause(paused) {
+        this.gameState.update('game.paused', paused);
+        
+        if (paused) {
             this.matter.world.pause();
         } else {
             this.matter.world.resume();
@@ -208,39 +203,34 @@ class GameScene extends Phaser.Scene {
         // Let CombatSystem handle rewards
         this.systems.combat.processWaveRewards(currentWave);
         
-        // Show wave complete message through UIManager
-        window.EventBus.emit(window.GameEvents.WAVE_COMPLETE, {
-            waveNumber: currentWave,
-            callback: () => {
-                this.systems.wave.startWave(currentWave + 1);
-            }
+        // Start next wave after delay
+        this.time.delayedCall(3000, () => {
+            this.systems.wave.startWave(currentWave + 1);
         });
-    }
-    
-    handleGameOver() {
-        AudioManager.stopMusic();
-        
-        this.gameState.update('game.gameOver', true);
-        
-        // Send final stats to UI
-        window.dispatchEvent(new CustomEvent('gameStateUpdate', {
-            detail: {
-                gameOver: true,
-                victory: false,
-                finalScore: this.gameState.get('game.score'),
-                wavesCompleted: this.gameState.get('waves.current') - 1,
-                totalKills: this.gameState.get('game.totalKills')
-            }
-        }));
     }
     
     handleUICommand(command) {
         const commands = {
-            pause: () => this.gameState.update('game.paused', command.value),
-            restart: () => this.scene.restart(),
-            menu: () => this.scene.start('Menu'),
-            upgrade: () => this.systems.combat.handleUpgrade(command.stat),
-            sound: () => this.sound.mute = !command.value
+            pause: () => {
+                const paused = !this.gameState.get('game.paused');
+                this.eventBus.emit(window.GameEvents.GAME_PAUSE, { paused });
+            },
+            restart: () => {
+                this.scene.restart();
+            },
+            menu: () => {
+                AudioManager.stopMusic();
+                this.scene.start('Menu');
+            },
+            upgrade: () => {
+                this.eventBus.emit(window.GameEvents.UPGRADE_REQUEST, {
+                    upgradeType: command.upgradeType
+                });
+            },
+            sound: () => {
+                this.sound.mute = !command.value;
+                AudioManager.setMute(!command.value);
+            }
         };
         
         if (commands[command.command]) {
@@ -260,20 +250,24 @@ class GameScene extends Phaser.Scene {
                             health: this.gameState.get('player.health'),
                             maxHealth: this.gameState.get('player.maxHealth'),
                             energy: this.gameState.get('player.energy'),
-                            maxEnergy: this.gameState.get('player.maxEnergy')
+                            maxEnergy: this.gameState.get('player.maxEnergy'),
+                            alive: this.gameState.get('player.alive')
                         },
                         game: {
                             credits: this.gameState.get('game.credits'),
                             score: this.gameState.get('game.score'),
                             combo: this.gameState.get('game.combo'),
-                            comboTimer: this.gameState.get('game.comboTimer')
+                            comboTimer: this.gameState.get('game.comboTimer'),
+                            paused: this.gameState.get('game.paused'),
+                            gameOver: this.gameState.get('game.gameOver')
                         },
                         mission: {
                             currentWave: this.gameState.get('waves.current'),
                             waveInProgress: this.gameState.get('waves.waveInProgress'),
                             enemiesDefeated: this.gameState.get('waves.totalEnemies') - this.gameState.get('waves.enemiesRemaining'),
                             totalEnemies: this.gameState.get('waves.totalEnemies')
-                        }
+                        },
+                        upgrades: this.systems.ability.getAllUpgradeInfo()
                     };
                     
                     window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
@@ -284,7 +278,6 @@ class GameScene extends Phaser.Scene {
     
     destroy() {
         // Clean up event listeners
-        this.eventBus.clear();
         window.removeEventListener('gameCommand', this.handleUICommand);
         
         // Stop music
@@ -293,11 +286,18 @@ class GameScene extends Phaser.Scene {
         // Clean up entities
         this.entityManager.clear();
         
+        // Clear collections
+        this.sprites.clear();
+        this.trails.clear();
+        
         // Let systems clean up their own resources
         Object.values(this.systems).forEach(system => {
             if (system.destroy) {
                 system.destroy();
             }
         });
+        
+        // Clear UIManager messages
+        window.UIManager.destroy();
     }
 }

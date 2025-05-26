@@ -1,4 +1,5 @@
-// WeaponSystem.js - Handles all weapon firing and projectile management
+// WeaponSystem.js - Handles weapon state and projectile creation only
+// REFACTORED: Removed collision detection and direct entity destruction
 
 class WeaponSystem {
     constructor(scene) {
@@ -17,6 +18,23 @@ class WeaponSystem {
                 this.handlePlayerShoot(data);
             }
         });
+        
+        window.EventBus.on(window.GameEvents.ENEMY_SHOOT, (data) => {
+            this.handleEnemyShoot(data);
+        });
+        
+        // Listen for projectile expiration
+        window.EventBus.on(window.GameEvents.PROJECTILE_EXPIRED, (data) => {
+            this.projectiles.delete(data.projectileId);
+            window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+                entityId: data.projectileId
+            });
+        });
+        
+        // Listen for entity destruction to clean up projectiles
+        window.EventBus.on(window.GameEvents.ENTITY_DESTROYED, (data) => {
+            this.projectiles.delete(data.id);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -32,6 +50,14 @@ class WeaponSystem {
                     weapon.chargeTime + deltaTime * 1000,
                     weapon.maxChargeTime
                 );
+                
+                // Emit charge update for UI
+                if (entityId === this.scene.player) {
+                    const chargePercent = (weapon.chargeTime / weapon.maxChargeTime) * 100;
+                    window.EventBus.emit(window.GameEvents.PLAYER_CHARGE_UPDATE, {
+                        percent: chargePercent
+                    });
+                }
             }
             
             // Cool down weapon
@@ -48,13 +74,12 @@ class WeaponSystem {
                 lifetime.elapsed += deltaTime * 1000;
                 
                 if (lifetime.elapsed >= lifetime.duration) {
-                    this.destroyProjectile(projectileId);
+                    window.EventBus.emit(window.GameEvents.PROJECTILE_EXPIRED, {
+                        projectileId: projectileId
+                    });
                 }
             }
         });
-        
-        // Check projectile collisions
-        this.checkProjectileCollisions();
     }
     
     handlePlayerShoot(data) {
@@ -64,12 +89,19 @@ class WeaponSystem {
         this.fireWeapon(this.scene.player, data.angle);
     }
     
+    handleEnemyShoot(data) {
+        const weapon = this.entityManager.getComponent(data.shooterId, 'weapon');
+        if (!weapon || weapon.lastFireTime > 0) return;
+        
+        this.fireWeapon(data.shooterId, data.angle);
+    }
+    
     fireWeapon(shooterId, angle) {
         const weapon = this.entityManager.getComponent(shooterId, 'weapon');
         const transform = this.entityManager.getComponent(shooterId, 'transform');
-        const shooterSprite = this.scene.sprites.get(shooterId);
+        const shooterEntity = this.entityManager.getEntity(shooterId);
         
-        if (!weapon || !transform || !shooterSprite || weapon.lastFireTime > 0) return;
+        if (!weapon || !transform || !shooterEntity || weapon.lastFireTime > 0) return;
         
         // Calculate charge level
         const chargeLevel = weapon.chargeTime / weapon.maxChargeTime;
@@ -92,156 +124,52 @@ class WeaponSystem {
         
         this.projectiles.set(projectileId, true);
         
-        // Apply recoil
+        // Apply recoil force
         const recoilForce = 0.5 * (1 + chargeLevel);
-        shooterSprite.applyForce({
-            x: -Math.cos(angle) * recoilForce,
-            y: -Math.sin(angle) * recoilForce
+        window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+            entityId: shooterId,
+            force: {
+                x: -Math.cos(angle) * recoilForce,
+                y: -Math.sin(angle) * recoilForce
+            }
         });
         
         // Update weapon state
         weapon.lastFireTime = weapon.fireRate;
         weapon.chargeTime = 0;
         
-        // Effects
+        // Emit projectile created event
+        window.EventBus.emit(window.GameEvents.PROJECTILE_CREATED, {
+            projectileId: projectileId,
+            shooterId: shooterId,
+            isCharged: isCharged,
+            position: { x: spawnX, y: spawnY }
+        });
+        
+        // Play sound
         AudioManager.play(isCharged ? 'explosion' : 'shoot');
+        
+        // Request camera shake for charged player shots
         if (isCharged && shooterId === this.scene.player) {
-            this.scene.renderSystem.shake(200, 0.01);
+            window.EventBus.emit(window.GameEvents.CAMERA_SHAKE, {
+                duration: 200,
+                intensity: 0.01
+            });
         }
         
         return projectileId;
     }
     
-    checkProjectileCollisions() {
-        const projectiles = this.entityManager.getEntitiesByType('projectile');
-        
-        projectiles.forEach(projectileId => {
-            const sprite = this.scene.sprites.get(projectileId);
-            if (!sprite || !sprite.active) return;
-            
-            const projectileData = this.entityManager.getComponent(projectileId, 'projectile');
-            if (!projectileData) return;
-            
-            // Check collision with all bodies
-            const bodies = this.scene.matter.world.getAllBodies();
-            
-            bodies.forEach(body => {
-                if (body === sprite.body || !body.gameObject) return;
-                
-                // Check collision
-                const collision = this.scene.matter.collision.collides(sprite.body, body);
-                if (!collision) return;
-                
-                // Find entity for this body
-                let targetEntity = null;
-                this.scene.sprites.forEach((targetSprite, entityId) => {
-                    if (targetSprite.body === body) {
-                        targetEntity = entityId;
-                    }
-                });
-                
-                if (!targetEntity) return;
-                
-                // Check if already hit
-                if (projectileData.hitEntities.has(targetEntity)) return;
-                
-                // Check if can damage
-                if (!this.canDamageTarget(projectileId, targetEntity)) return;
-                
-                // Mark as hit
-                projectileData.hitEntities.add(targetEntity);
-                
-                // Emit hit event
-                window.EventBus.emit(window.GameEvents.PROJECTILE_HIT, {
-                    projectileId: projectileId,
-                    targetId: targetEntity,
-                    damage: projectileData.damage
-                });
-                
-                // Destroy if not penetrating
-                if (!projectileData.penetrating) {
-                    this.destroyProjectile(projectileId);
-                }
+    getProjectileCount() {
+        return this.projectiles.size;
+    }
+    
+    clearAllProjectiles() {
+        this.projectiles.forEach((value, projectileId) => {
+            window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+                entityId: projectileId
             });
         });
-    }
-    
-    canDamageTarget(projectileId, targetId) {
-        const projectileData = this.entityManager.getComponent(projectileId, 'projectile');
-        const targetEntity = this.entityManager.getEntity(targetId);
-        
-        if (!projectileData || !targetEntity) return false;
-        
-        // Can't damage self
-        if (projectileData.ownerId === targetId) return false;
-        
-        // Can't damage other projectiles or powerups
-        if (targetEntity.type === 'projectile' || targetEntity.type === 'powerup') return false;
-        
-        // Check factions
-        const targetFaction = this.entityManager.getComponent(targetId, 'faction');
-        if (targetFaction && projectileData.ownerFaction) {
-            if (targetFaction.name === projectileData.ownerFaction) return false;
-            if (targetFaction.friendlyWith.has(projectileData.ownerFaction)) return false;
-        }
-        
-        return true;
-    }
-    
-    destroyProjectile(projectileId) {
-        const sprite = this.scene.sprites.get(projectileId);
-        if (!sprite) return;
-        
-        // Create impact effect
-        window.EventBus.emit(window.GameEvents.EXPLOSION, {
-            x: sprite.x,
-            y: sprite.y,
-            type: 'impact',
-            scale: 0.5
-        });
-        
-        // Clean up
-        this.projectiles.delete(projectileId);
-        sprite.destroy();
-        this.scene.sprites.delete(projectileId);
-        
-        // Remove trail
-        const trail = this.scene.trails.get(projectileId);
-        if (trail) {
-            trail.destroy();
-            this.scene.trails.delete(projectileId);
-        }
-        
-        this.entityManager.destroyEntity(projectileId);
-    }
-    
-    // Enemy shooting
-    enemyShoot(enemyId, targetId) {
-        const enemy = this.entityManager.getEntity(enemyId);
-        const target = this.entityManager.getEntity(targetId);
-        
-        if (!enemy || !target) return;
-        
-        const angle = this.calculateAngleToTarget(enemyId, targetId);
-        
-        // Add inaccuracy based on AI
-        const ai = this.entityManager.getComponent(enemyId, 'ai');
-        const accuracy = 1 - (ai.fearLevel * 0.3);
-        const spread = (1 - accuracy) * 0.3;
-        const finalAngle = angle + (Math.random() - 0.5) * spread;
-        
-        return this.fireWeapon(enemyId, finalAngle);
-    }
-    
-    calculateAngleToTarget(shooterId, targetId) {
-        const shooterTransform = this.entityManager.getComponent(shooterId, 'transform');
-        const targetTransform = this.entityManager.getComponent(targetId, 'transform');
-        
-        if (!shooterTransform || !targetTransform) return 0;
-        
-        return Math.atan2(
-            targetTransform.y - shooterTransform.y,
-            targetTransform.x - shooterTransform.x
-        );
+        this.projectiles.clear();
     }
 }

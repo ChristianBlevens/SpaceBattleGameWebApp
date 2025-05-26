@@ -1,4 +1,5 @@
-// EntityFactory.js - Handles all entity creation
+// EntityFactory.js - Handles all entity creation without visual effects or collision logic
+// REFACTORED: Removed visual effects and collision setup, now purely creates entities
 
 class EntityFactory {
     constructor(scene) {
@@ -32,13 +33,17 @@ class EntityFactory {
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
         sprite.setBounce(0.8);
+        sprite.setData('entityId', playerId);
+        sprite.setData('entityType', 'player');
         
         // Store references
         this.scene.sprites.set(playerId, sprite);
         
-        // Create trail graphics
-        const trail = this.scene.add.graphics();
-        this.scene.trails.set(playerId, trail);
+        // Request trail creation
+        window.EventBus.emit(window.GameEvents.CREATE_TRAIL, {
+            entityId: playerId,
+            trailConfig: Components.trail(20, 0x00ffff, 3)
+        });
         
         return playerId;
     }
@@ -72,6 +77,8 @@ class EntityFactory {
         sprite.setBounce(0.7);
         sprite.setScale(factionConfig.size);
         sprite.setVelocity(initialVelocity.x, initialVelocity.y);
+        sprite.setData('entityId', enemyId);
+        sprite.setData('entityType', 'enemy');
         
         // Store references
         this.scene.sprites.set(enemyId, sprite);
@@ -105,6 +112,8 @@ class EntityFactory {
         sprite.setFrictionAir(0);
         sprite.setBounce(0.9);
         sprite.setScale(config.radius / 80);
+        sprite.setData('entityId', planetId);
+        sprite.setData('entityType', 'planet');
         
         this.scene.sprites.set(planetId, sprite);
         
@@ -160,39 +169,17 @@ class EntityFactory {
         sprite.setCircle(20);
         sprite.setSensor(true);
         sprite.setFriction(0);
-        
-        // Floating animation
-        this.scene.tweens.add({
-            targets: sprite,
-            y: y - 20,
-            duration: 1000,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
-        });
-        
-        // Rotation
-        this.scene.tweens.add({
-            targets: sprite,
-            rotation: Math.PI * 2,
-            duration: 3000,
-            repeat: -1
-        });
+        sprite.setData('entityId', powerupId);
+        sprite.setData('entityType', 'powerup');
         
         this.scene.sprites.set(powerupId, sprite);
         this.scene.powerupGroup.add(sprite);
         
-        // Set up collision detection
-        sprite.setOnCollide((pair) => {
-            const { bodyA, bodyB } = pair;
-            const playerSprite = this.scene.sprites.get(this.scene.player);
-            if (playerSprite && (bodyA === playerSprite.body || bodyB === playerSprite.body)) {
-                window.EventBus.emit(window.GameEvents.PICKUP_COLLECT, {
-                    powerupId: powerupId,
-                    type: type,
-                    value: type === 'credits' ? 100 : 25
-                });
-            }
+        // Emit creation event for RenderSystem to handle animations
+        window.EventBus.emit(window.GameEvents.POWERUP_CREATED, {
+            entityId: powerupId,
+            type: type,
+            position: { x, y }
         });
         
         return powerupId;
@@ -239,28 +226,23 @@ class EntityFactory {
             Math.cos(angle) * speed,
             Math.sin(angle) * speed
         );
+        sprite.setData('entityId', projectileId);
+        sprite.setData('entityType', 'projectile');
         
-        // Add glow effect for charged shots
         if (isCharged) {
             sprite.setScale(1.5);
-            this.scene.tweens.add({
-                targets: sprite,
-                scale: { from: 1.5, to: 1.8 },
-                alpha: { from: 1, to: 0.8 },
-                duration: 200,
-                yoyo: true,
-                repeat: -1
-            });
         }
         
-        // Add trail effect for player/charged projectiles
+        // Request trail for player/charged projectiles
         if (isCharged || ownerEntity.type === 'player') {
-            const trail = this.scene.add.graphics();
-            this.scene.trails.set(projectileId, trail);
-            
             this.entityManager.addComponent(projectileId, 'trail', 
                 Components.trail(10, isCharged ? 0x00ffff : 0xffff00, 3)
             );
+            
+            window.EventBus.emit(window.GameEvents.CREATE_TRAIL, {
+                entityId: projectileId,
+                trailConfig: Components.trail(10, isCharged ? 0x00ffff : 0xffff00, 3)
+            });
         }
         
         this.scene.sprites.set(projectileId, sprite);

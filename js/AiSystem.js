@@ -1,4 +1,5 @@
 // AISystem.js - Advanced AI behavior system with faction-specific behaviors
+// REFACTORED: Removed direct system access, now fully event-driven
 
 class AISystem {
     constructor(scene) {
@@ -35,9 +36,8 @@ class AISystem {
             const ai = entityManager.getComponent(entityId, 'ai');
             const transform = entityManager.getComponent(entityId, 'transform');
             const physics = entityManager.getComponent(entityId, 'physics');
-            const sprite = this.scene.sprites.get(entityId);
             
-            if (!ai || !transform || !physics || !sprite) return;
+            if (!ai || !transform || !physics) return;
             
             // Update decision timer
             ai.decisionTimer -= deltaTime * 1000;
@@ -54,25 +54,8 @@ class AISystem {
             // Apply faction-specific behavior
             if (this.factionBehaviors[ai.faction]) {
                 this.factionBehaviors[ai.faction].update(
-                    entityId, ai, transform, physics, this.scene, deltaTime
+                    entityId, ai, transform, physics, deltaTime
                 );
-            }
-            
-            // Update sprite rotation to face movement direction
-            if (sprite && sprite.body) {
-                const vel = sprite.body.velocity;
-                if (Math.abs(vel.x) > 0.1 || Math.abs(vel.y) > 0.1) {
-                    const targetAngle = Math.atan2(vel.y, vel.x);
-                    const currentAngle = sprite.rotation;
-                    
-                    // Smooth rotation
-                    let angleDiff = targetAngle - currentAngle;
-                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                    
-                    const turnAmount = Math.min(Math.abs(angleDiff), this.boidParams.maxTurnRate);
-                    sprite.rotation += Math.sign(angleDiff) * turnAmount;
-                }
             }
         });
     }
@@ -144,9 +127,6 @@ class AISystem {
     }
     
     executeBehavior(entityId, ai, transform, physics, deltaTime) {
-        const sprite = this.scene.sprites.get(entityId);
-        if (!sprite) return;
-        
         let forceX = 0;
         let forceY = 0;
         
@@ -167,7 +147,7 @@ class AISystem {
                         
                         // Try to shoot
                         if (dist < 500 && Math.random() < 0.02) {
-                            this.tryToShoot(entityId, ai.target);
+                            this.requestShoot(entityId, ai.target);
                         }
                     }
                 }
@@ -218,7 +198,7 @@ class AISystem {
                         
                         // Occasionally shoot
                         if (Math.random() < 0.01) {
-                            this.tryToShoot(entityId, ai.target);
+                            this.requestShoot(entityId, ai.target);
                         }
                     }
                 }
@@ -260,10 +240,11 @@ class AISystem {
         forceX += boidForces.x;
         forceY += boidForces.y;
         
-        // Apply forces
-        if (sprite.body) {
-            sprite.applyForce({ x: forceX, y: forceY });
-        }
+        // Emit movement request instead of directly applying force
+        window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+            entityId: entityId,
+            force: { x: forceX, y: forceY }
+        });
     }
     
     calculateBoidForces(entityId, faction) {
@@ -336,24 +317,14 @@ class AISystem {
         return { x: forceX, y: forceY };
     }
     
-    tryToShoot(shooterId, targetId) {
+    requestShoot(shooterId, targetId) {
         const weapon = this.entityManager.getComponent(shooterId, 'weapon');
         if (!weapon || weapon.lastFireTime > 0) return;
         
-        const angle = this.calculateAngleToTarget(shooterId, targetId);
-        
-        // Add some inaccuracy based on AI skill
-        const ai = this.entityManager.getComponent(shooterId, 'ai');
-        const accuracy = 1 - (ai.fearLevel * 0.3);
-        const spread = (1 - accuracy) * 0.3;
-        const finalAngle = angle + (Math.random() - 0.5) * spread;
-        
-        // Use weapon system to shoot
-        this.scene.weaponSystem.enemyShoot(shooterId, targetId);
-        
-        window.EventBus.emit(window.GameEvents.ENEMY_SHOOT, {
+        window.EventBus.emit(window.GameEvents.ENEMY_SHOOT_REQUEST, {
             shooterId: shooterId,
-            targetId: targetId
+            targetId: targetId,
+            angle: this.calculateAngleToTarget(shooterId, targetId)
         });
     }
     
@@ -368,11 +339,17 @@ class AISystem {
             targetTransform.x - shooterTransform.x
         );
     }
+    
+    getDistance(transformA, transformB) {
+        const dx = transformB.x - transformA.x;
+        const dy = transformB.y - transformA.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
 }
 
 // Faction-specific behaviors
 class SwarmBehavior {
-    update(entityId, ai, transform, physics, scene, deltaTime) {
+    update(entityId, ai, transform, physics, deltaTime) {
         // Swarm enemies attack in groups and are very aggressive
         ai.aggressionLevel = 0.9;
         ai.fearLevel = 0.2;
@@ -387,7 +364,7 @@ class SwarmBehavior {
 }
 
 class SentinelBehavior {
-    update(entityId, ai, transform, physics, scene, deltaTime) {
+    update(entityId, ai, transform, physics, deltaTime) {
         // Sentinels are defensive and protect territories
         ai.aggressionLevel = 0.4;
         ai.fearLevel = 0.3;
@@ -407,51 +384,56 @@ class SentinelBehavior {
         
         if (dist > 500 && ai.state !== 'attacking') {
             ai.state = 'returning';
-            const sprite = scene.sprites.get(entityId);
-            if (sprite) {
-                sprite.applyForce({
+            
+            // Request movement force
+            window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+                entityId: entityId,
+                force: {
                     x: (dx / dist) * 0.01,
                     y: (dy / dist) * 0.01
-                });
-            }
+                }
+            });
         }
     }
 }
 
 class PhantomBehavior {
-    update(entityId, ai, transform, physics, scene, deltaTime) {
+    update(entityId, ai, transform, physics, deltaTime) {
         // Phantoms are stealthy and unpredictable
         ai.aggressionLevel = 0.6;
         ai.fearLevel = 0.5;
         
         // Phase in and out
-        const sprite = scene.sprites.get(entityId);
-        if (sprite) {
-            if (!ai.memory.phaseTimer) {
-                ai.memory.phaseTimer = 0;
-                ai.memory.phased = false;
-            }
+        if (!ai.memory.phaseTimer) {
+            ai.memory.phaseTimer = 0;
+            ai.memory.phased = false;
+        }
+        
+        ai.memory.phaseTimer += deltaTime;
+        
+        if (ai.memory.phaseTimer > 2) {
+            ai.memory.phaseTimer = 0;
+            ai.memory.phased = !ai.memory.phased;
             
-            ai.memory.phaseTimer += deltaTime;
+            // Emit phase change event
+            window.EventBus.emit(window.GameEvents.ENEMY_PHASE_CHANGE, {
+                entityId: entityId,
+                phased: ai.memory.phased,
+                alpha: ai.memory.phased ? 0.3 : 1,
+                speedMultiplier: ai.memory.phased ? 1.33 : 1
+            });
             
-            if (ai.memory.phaseTimer > 2) {
-                ai.memory.phaseTimer = 0;
-                ai.memory.phased = !ai.memory.phased;
-                
-                if (ai.memory.phased) {
-                    sprite.setAlpha(0.3);
-                    physics.maxSpeed = 8;
-                } else {
-                    sprite.setAlpha(1);
-                    physics.maxSpeed = 6;
-                }
+            if (ai.memory.phased) {
+                physics.maxSpeed = 8;
+            } else {
+                physics.maxSpeed = 6;
             }
         }
     }
 }
 
 class TitanBehavior {
-    update(entityId, ai, transform, physics, scene, deltaTime) {
+    update(entityId, ai, transform, physics, deltaTime) {
         // Titans are slow but powerful
         ai.aggressionLevel = 0.8;
         ai.fearLevel = 0.1;
@@ -465,21 +447,12 @@ class TitanBehavior {
                 if (!ai.memory.lastShockwave || ai.memory.lastShockwave + 3000 < Date.now()) {
                     ai.memory.lastShockwave = Date.now();
                     
-                    scene.effectsSystem.createShockwave(
-                        transform.x,
-                        transform.y,
-                        0xff9966
-                    );
-                    
-                    // Apply explosion force
-                    scene.physicsSystem.createExplosionForce(
-                        transform.x,
-                        transform.y,
-                        10,
-                        200
-                    );
-                    
-                    AudioManager.play('explosion');
+                    // Emit shockwave event
+                    window.EventBus.emit(window.GameEvents.TITAN_SHOCKWAVE, {
+                        entityId: entityId,
+                        x: transform.x,
+                        y: transform.y
+                    });
                 }
             }
         }

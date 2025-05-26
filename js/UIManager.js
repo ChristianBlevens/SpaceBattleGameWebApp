@@ -1,11 +1,10 @@
-// UIManager.js - Bridges game systems with Alpine.js UI and handles in-game messages
+// UIManager.js - Manages HTML UI updates and notifications only
+// REFACTORED: Removed all Phaser scene manipulation, now pure HTML UI management
 
 class UIManager {
     constructor() {
         this.eventQueue = [];
         this.notificationId = 0;
-        this.scene = null; // Will be set when scene initializes
-        this.activeMessages = new Map();
         
         // Set up event listeners
         this.setupEventListeners();
@@ -14,14 +13,14 @@ class UIManager {
         this.startUpdateLoop();
     }
     
-    // Initialize with scene reference
-    init(scene) {
-        this.scene = scene;
+    init() {
+        // No scene reference needed anymore
+        console.log('[UIManager] Initialized');
     }
     
     setupEventListeners() {
         // Game events that affect UI
-        window.EventBus.on(window.GameEvents.PLAYER_DAMAGE, (data) => {
+        window.EventBus.on(window.GameEvents.PLAYER_DAMAGED, (data) => {
             this.showDamageIndicator();
         });
         
@@ -29,12 +28,16 @@ class UIManager {
             this.showHealEffect();
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_DEATH, (data) => {
+        window.EventBus.on(window.GameEvents.ENEMY_KILLED, (data) => {
             this.showKillNotification(data);
         });
         
         window.EventBus.on(window.GameEvents.COMBO_INCREASE, (data) => {
-            this.showComboEffect(data.combo);
+            this.showComboNotification(data.combo);
+        });
+        
+        window.EventBus.on(window.GameEvents.COMBO_BREAK, () => {
+            // Just update UI state, RenderSystem handles the in-game display
         });
         
         window.EventBus.on(window.GameEvents.WAVE_START, (data) => {
@@ -52,16 +55,9 @@ class UIManager {
                     credits: 500 * data.wave
                 }
             });
-            
-            // Show wave start message
-            this.showGameMessage(`WAVE ${data.wave}`, 'ENEMIES INCOMING!', 'wave-start');
         });
         
-        window.EventBus.on(window.GameEvents.WAVE_COMPLETE, (data) => {
-            this.showWaveCompleteMessage(data.waveNumber, data.callback);
-        });
-        
-        window.EventBus.on(window.GameEvents.PICKUP_COLLECT, (data) => {
+        window.EventBus.on(window.GameEvents.POWERUP_COLLECTED, (data) => {
             this.showPickupNotification(data);
         });
         
@@ -69,233 +65,31 @@ class UIManager {
             this.showNotification(data.message, data.type, data.icon);
         });
         
+        window.EventBus.on(window.GameEvents.PLAYER_CHARGE_UPDATE, (data) => {
+            this.updateChargeIndicator(data.percent);
+        });
+        
+        window.EventBus.on(window.GameEvents.UPGRADE_APPLIED, (data) => {
+            this.updateUpgradeDisplay(data);
+        });
+        
+        window.EventBus.on(window.GameEvents.WAVE_REWARDS, (data) => {
+            this.showNotification(
+                `Wave ${data.waveNumber} Complete! +${data.points} points, +${data.credits} credits`,
+                'success',
+                'fa-trophy'
+            );
+        });
+        
         window.EventBus.on(window.GameEvents.GAME_OVER, (data) => {
-            this.showGameOverMessage(data.victory);
+            this.showGameOverUI(data.victory);
         });
-    }
-    
-    // In-game message system
-    showGameMessage(title, subtitle = '', messageType = 'default', duration = 3000) {
-        if (!this.scene) return;
-        
-        const messageId = `message_${Date.now()}`;
-        const centerX = this.scene.cameras.main.centerX;
-        const centerY = this.scene.cameras.main.centerY;
-        
-        // Message styling based on type
-        const styles = {
-            'wave-start': {
-                titleColor: '#00ffff',
-                titleSize: '64px',
-                subtitleColor: '#ffffff',
-                subtitleSize: '32px'
-            },
-            'wave-complete': {
-                titleColor: '#00ff00',
-                titleSize: '64px',
-                subtitleColor: '#ffff00',
-                subtitleSize: '32px'
-            },
-            'boss-warning': {
-                titleColor: '#ff0000',
-                titleSize: '72px',
-                subtitleColor: '#ff6666',
-                subtitleSize: '36px'
-            },
-            'victory': {
-                titleColor: '#ffff00',
-                titleSize: '80px',
-                subtitleColor: '#00ff00',
-                subtitleSize: '40px'
-            },
-            'game-over': {
-                titleColor: '#ff0000',
-                titleSize: '80px',
-                subtitleColor: '#ff6666',
-                subtitleSize: '40px'
-            },
-            'default': {
-                titleColor: '#ffffff',
-                titleSize: '48px',
-                subtitleColor: '#cccccc',
-                subtitleSize: '24px'
-            }
-        };
-        
-        const style = styles[messageType] || styles.default;
-        
-        // Create title text
-        const titleText = this.scene.add.text(centerX, centerY - 30, title, {
-            fontSize: style.titleSize,
-            fontFamily: 'Orbitron',
-            color: style.titleColor,
-            stroke: '#000000',
-            strokeThickness: 6
-        });
-        titleText.setOrigin(0.5);
-        titleText.setScrollFactor(0);
-        titleText.setScale(0);
-        titleText.setDepth(1000);
-        
-        // Create subtitle if provided
-        let subtitleText = null;
-        if (subtitle) {
-            subtitleText = this.scene.add.text(centerX, centerY + 40, subtitle, {
-                fontSize: style.subtitleSize,
-                fontFamily: 'Orbitron',
-                color: style.subtitleColor,
-                stroke: '#000000',
-                strokeThickness: 4
-            });
-            subtitleText.setOrigin(0.5);
-            subtitleText.setScrollFactor(0);
-            subtitleText.setAlpha(0);
-            subtitleText.setDepth(1000);
-        }
-        
-        // Store message reference
-        this.activeMessages.set(messageId, { titleText, subtitleText });
-        
-        // Animate entrance
-        this.scene.tweens.add({
-            targets: titleText,
-            scale: 1,
-            duration: 500,
-            ease: 'Back.easeOut'
-        });
-        
-        if (subtitleText) {
-            this.scene.tweens.add({
-                targets: subtitleText,
-                alpha: 1,
-                delay: 300,
-                duration: 500
-            });
-        }
-        
-        // Auto-dismiss after duration
-        this.scene.time.delayedCall(duration, () => {
-            this.dismissGameMessage(messageId);
-        });
-        
-        return messageId;
-    }
-    
-    dismissGameMessage(messageId, callback) {
-        const message = this.activeMessages.get(messageId);
-        if (!message) return;
-        
-        const { titleText, subtitleText } = message;
-        const targets = subtitleText ? [titleText, subtitleText] : [titleText];
-        
-        this.scene.tweens.add({
-            targets: targets,
-            alpha: 0,
-            duration: 500,
-            onComplete: () => {
-                titleText.destroy();
-                if (subtitleText) subtitleText.destroy();
-                this.activeMessages.delete(messageId);
-                if (callback) callback();
-            }
-        });
-    }
-    
-    showWaveCompleteMessage(waveNumber, callback) {
-        const messageId = this.showGameMessage(
-            `WAVE ${waveNumber} COMPLETE!`,
-            `+${1000 * waveNumber} POINTS`,
-            'wave-complete',
-            2500
-        );
-        
-        // Override the auto-dismiss to use the callback
-        this.scene.time.delayedCall(2500, () => {
-            this.dismissGameMessage(messageId, callback);
-        });
-    }
-    
-    showGameOverMessage(victory = false) {
-        if (victory) {
-            this.showGameMessage(
-                'VICTORY!',
-                'ALL WAVES COMPLETED',
-                'victory',
-                0 // Don't auto-dismiss
-            );
-        } else {
-            this.showGameMessage(
-                'GAME OVER',
-                'PRESS R TO RESTART',
-                'game-over',
-                0 // Don't auto-dismiss
-            );
-        }
-    }
-    
-    // Combo display
-    showComboMessage(combo) {
-        const existingCombo = this.activeMessages.get('combo');
-        if (existingCombo) {
-            existingCombo.titleText.setText(`COMBO x${combo}!`);
-            
-            // Refresh animation
-            this.scene.tweens.add({
-                targets: existingCombo.titleText,
-                scale: { from: 1.2, to: 1 },
-                duration: 200,
-                ease: 'Back.easeOut'
-            });
-        } else {
-            const comboText = this.scene.add.text(
-                this.scene.cameras.main.centerX,
-                this.scene.cameras.main.height * 0.2,
-                `COMBO x${combo}!`,
-                {
-                    fontSize: '48px',
-                    fontFamily: 'Orbitron',
-                    color: '#ffff00',
-                    stroke: '#ff6600',
-                    strokeThickness: 4
-                }
-            );
-            comboText.setOrigin(0.5);
-            comboText.setScrollFactor(0);
-            comboText.setDepth(999);
-            
-            this.activeMessages.set('combo', { titleText: comboText });
-        }
-    }
-    
-    hideComboMessage() {
-        const combo = this.activeMessages.get('combo');
-        if (combo) {
-            this.scene.tweens.add({
-                targets: combo.titleText,
-                alpha: 0,
-                scale: 0.8,
-                duration: 300,
-                onComplete: () => {
-                    combo.titleText.destroy();
-                    this.activeMessages.delete('combo');
-                }
-            });
-        }
     }
     
     startUpdateLoop() {
         setInterval(() => {
             this.processEventQueue();
-            this.updateComboDisplay();
         }, 16); // 60 FPS
-    }
-    
-    updateComboDisplay() {
-        // Hide combo if timer expired
-        const comboTimer = window.GameState.get('game.comboTimer');
-        if (comboTimer <= 0 && this.activeMessages.has('combo')) {
-            this.hideComboMessage();
-        }
     }
     
     processEventQueue() {
@@ -395,10 +189,7 @@ class UIManager {
         this.showNotification(message, 'kill', 'fa-skull');
     }
     
-    showComboEffect(combo) {
-        // Update in-game combo display
-        this.showComboMessage(combo);
-        
+    showComboNotification(combo) {
         // Show special notifications for milestones
         if (combo === 5) {
             this.showNotification('COMBO x5!', 'achievement', 'fa-fire');
@@ -439,6 +230,39 @@ class UIManager {
         });
     }
     
+    updateChargeIndicator(percent) {
+        const indicator = document.querySelector('.charge-indicator');
+        if (indicator) {
+            if (percent > 0) {
+                indicator.style.display = 'block';
+                const progress = indicator.querySelector('.charge-progress');
+                if (progress) {
+                    const circumference = 283; // 2 * PI * 45 (radius)
+                    progress.style.strokeDashoffset = circumference - (circumference * percent / 100);
+                }
+            } else {
+                indicator.style.display = 'none';
+            }
+        }
+    }
+    
+    updateUpgradeDisplay(data) {
+        this.queueEvent('upgradeApplied', {
+            upgradeType: data.upgradeType,
+            newLevel: data.newLevel,
+            newValue: data.newValue
+        });
+    }
+    
+    showGameOverUI(victory) {
+        this.queueEvent('gameOver', {
+            victory: victory,
+            finalScore: window.GameState.get('game.score'),
+            wavesCompleted: window.GameState.get('waves.current') - 1,
+            totalKills: window.GameState.get('game.totalKills')
+        });
+    }
+    
     // Static UI updates
     static updateHealthBar(health, maxHealth) {
         const healthBar = document.querySelector('.health-fill');
@@ -463,31 +287,8 @@ class UIManager {
         }
     }
     
-    static showChargeIndicator(percent) {
-        const indicator = document.querySelector('.charge-indicator');
-        if (indicator) {
-            if (percent > 0) {
-                indicator.style.display = 'block';
-                const progress = indicator.querySelector('.charge-progress');
-                if (progress) {
-                    const circumference = 283; // 2 * PI * 45 (radius)
-                    progress.style.strokeDashoffset = circumference - (circumference * percent / 100);
-                }
-            } else {
-                indicator.style.display = 'none';
-            }
-        }
-    }
-    
-    // Clean up when scene changes
+    // Clean up
     destroy() {
-        // Clear all active messages
-        this.activeMessages.forEach((message, id) => {
-            if (message.titleText) message.titleText.destroy();
-            if (message.subtitleText) message.subtitleText.destroy();
-        });
-        this.activeMessages.clear();
-        
         // Clear event queue
         this.eventQueue = [];
     }

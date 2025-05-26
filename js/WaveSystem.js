@@ -1,4 +1,5 @@
 // WaveSystem.js - Manages enemy waves and spawning
+// REFACTORED: Removed visual effects and direct UI manipulation
 
 class WaveSystem {
     constructor(scene) {
@@ -22,6 +23,21 @@ class WaveSystem {
         ];
     }
     
+    init() {
+        // Listen for game start
+        window.EventBus.on(window.GameEvents.GAME_START, () => {
+            this.reset();
+        });
+    }
+    
+    reset() {
+        this.currentWave = 0;
+        this.waveConfigs = [];
+        this.spawnTimer = 0;
+        this.spawnsRemaining = 0;
+        this.nextSpawnTime = 0;
+    }
+    
     startWave(waveNumber) {
         this.currentWave = waveNumber;
         
@@ -40,14 +56,21 @@ class WaveSystem {
         this.spawnsRemaining = waveConfig.totalEnemies;
         this.nextSpawnTime = 0;
         
-        // Show wave announcement
-        this.announceWave(waveNumber, waveConfig);
+        // Emit wave announcement event
+        window.EventBus.emit(window.GameEvents.WAVE_ANNOUNCED, {
+            waveNumber: waveNumber,
+            isBossWave: waveConfig.isBossWave,
+            enemyCount: waveConfig.totalEnemies
+        });
         
         // Emit wave start event
         window.EventBus.emit(window.GameEvents.WAVE_START, {
             wave: waveNumber,
             enemies: waveConfig.totalEnemies
         });
+        
+        // Play wave start sound
+        AudioManager.play('powerup');
     }
     
     generateWaveConfig(waveNumber) {
@@ -155,65 +178,36 @@ class WaveSystem {
     }
     
     spawnEnemy(spawnInfo) {
-		// Choose random spawn point
-		const spawnPoint = Phaser.Math.Pick(this.spawnPoints);
-		const x = spawnPoint.x();
-		const y = spawnPoint.y();
-		
-		// Get faction config
-		const factionConfig = GameConfig.factions[spawnInfo.faction];
-		if (!factionConfig) return;
-		
-		// Calculate initial velocity toward center
-		const centerX = GameConfig.world.centerX;
-		const centerY = GameConfig.world.centerY;
-		const angle = Math.atan2(centerY - y, centerX - x);
-		const speed = factionConfig.speed * 0.5;
-		
-		const initialVelocity = {
-			x: Math.cos(angle) * speed,
-			y: Math.sin(angle) * speed
-		};
-		
-		// Create enemy using factory
-		const factory = new EntityFactory(this.scene);
-		const enemyId = factory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
-		
-		// Spawn effect
-		window.EventBus.emit(window.GameEvents.EXPLOSION, {
-			x: x,
-			y: y,
-			type: 'spawn',
-			color: factionConfig.color,
-			scale: 0.8
-		});
-		
-		// Emit spawn event
-		window.EventBus.emit(window.GameEvents.ENEMY_SPAWN, {
-			entityId: enemyId,
-			faction: spawnInfo.faction,
-			position: { x, y }
-		});
-	}
-    
-    announceWave(waveNumber, waveConfig) {
-        const messages = [];
-        let messageType = 'wave-start';
+        // Choose random spawn point
+        const spawnPoint = Phaser.Math.Pick(this.spawnPoints);
+        const x = spawnPoint.x();
+        const y = spawnPoint.y();
         
-        if (waveConfig.isBossWave) {
-            messages.push(`BOSS WAVE ${waveNumber}`);
-            messages.push('TITANS APPROACHING!');
-            messageType = 'boss-warning';
-        } else {
-            messages.push(`WAVE ${waveNumber}`);
-            messages.push(`${waveConfig.totalEnemies} ENEMIES INCOMING`);
-        }
+        // Get faction config
+        const factionConfig = GameConfig.factions[spawnInfo.faction];
+        if (!factionConfig) return;
         
-        // Use UIManager to show the announcement
-        window.UIManager.showGameMessage(messages[0], messages[1], messageType);
+        // Calculate initial velocity toward center
+        const centerX = GameConfig.world.centerX;
+        const centerY = GameConfig.world.centerY;
+        const angle = Math.atan2(centerY - y, centerX - x);
+        const speed = factionConfig.speed * 0.5;
         
-        // Play wave start sound
-        AudioManager.play('powerup');
+        const initialVelocity = {
+            x: Math.cos(angle) * speed,
+            y: Math.sin(angle) * speed
+        };
+        
+        // Create enemy using factory
+        const factory = new EntityFactory(this.scene);
+        const enemyId = factory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
+        
+        // Emit spawn event for other systems
+        window.EventBus.emit(window.GameEvents.ENEMY_SPAWNED, {
+            entityId: enemyId,
+            faction: spawnInfo.faction,
+            position: { x, y }
+        });
     }
     
     shuffleArray(array) {
@@ -223,5 +217,19 @@ class WaveSystem {
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         return shuffled;
+    }
+    
+    getCurrentWaveInfo() {
+        const waveConfig = this.waveConfigs[this.currentWave];
+        if (!waveConfig) return null;
+        
+        return {
+            waveNumber: this.currentWave,
+            totalEnemies: waveConfig.totalEnemies,
+            enemiesRemaining: window.GameState.get('waves.enemiesRemaining'),
+            spawnsRemaining: this.spawnsRemaining,
+            isBossWave: waveConfig.isBossWave,
+            inProgress: window.GameState.get('waves.waveInProgress')
+        };
     }
 }

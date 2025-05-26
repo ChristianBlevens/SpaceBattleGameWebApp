@@ -1,4 +1,5 @@
-// PhysicsSystem.js - Handles all physics calculations including gravity and spiral forces
+// PhysicsSystem.js - Handles all physics calculations including gravity, collision detection, and forces
+// REFACTORED: Added centralized collision detection, removed direct sprite manipulation
 
 class PhysicsSystem {
     constructor(scene) {
@@ -11,10 +12,33 @@ class PhysicsSystem {
         
         // Performance optimization: spatial grid for collision detection
         this.spatialGrid = new SpatialGrid(GameConfig.world.width, GameConfig.world.height, 500);
+        
+        // Track applied forces
+        this.pendingForces = new Map();
     }
     
     init(entityManager) {
         this.entityManager = entityManager;
+        
+        // Listen for force application requests
+        window.EventBus.on(window.GameEvents.FORCE_APPLIED, (data) => {
+            if (!this.pendingForces.has(data.entityId)) {
+                this.pendingForces.set(data.entityId, { x: 0, y: 0 });
+            }
+            const forces = this.pendingForces.get(data.entityId);
+            forces.x += data.force.x;
+            forces.y += data.force.y;
+        });
+        
+        // Listen for explosion force requests
+        window.EventBus.on(window.GameEvents.CREATE_EXPLOSION_FORCE, (data) => {
+            this.createExplosionForce(data.x, data.y, data.force, data.radius);
+        });
+        
+        // Listen for titan shockwaves
+        window.EventBus.on(window.GameEvents.TITAN_SHOCKWAVE, (data) => {
+            this.createExplosionForce(data.x, data.y, 10, 200);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -33,12 +57,19 @@ class PhysicsSystem {
         // Apply forces
         this.applyGravitationalForces(physicsEntities, entityManager);
         this.applySpiralForce(physicsEntities, entityManager);
+        this.applyPendingForces(physicsEntities, entityManager);
         
         // Update velocities and positions
         this.integratePhysics(physicsEntities, entityManager, deltaTime);
         
+        // Detect collisions
+        this.detectCollisions(entityManager);
+        
         // Handle boundary wrapping
         this.handleBoundaries(physicsEntities, entityManager);
+        
+        // Clear pending forces
+        this.pendingForces.clear();
     }
     
     applyGravitationalForces(entities, entityManager) {
@@ -140,6 +171,18 @@ class PhysicsSystem {
         });
     }
     
+    applyPendingForces(entities, entityManager) {
+        entities.forEach(entityId => {
+            const physics = entityManager.getComponent(entityId, 'physics');
+            const forces = this.pendingForces.get(entityId);
+            
+            if (physics && forces) {
+                physics.acceleration.x += forces.x;
+                physics.acceleration.y += forces.y;
+            }
+        });
+    }
+    
     integratePhysics(entities, entityManager, deltaTime) {
         entities.forEach(entityId => {
             const transform = entityManager.getComponent(entityId, 'transform');
@@ -171,6 +214,97 @@ class PhysicsSystem {
             physics.acceleration.x = 0;
             physics.acceleration.y = 0;
         });
+    }
+    
+    detectCollisions(entityManager) {
+        // Projectile collisions
+        const projectiles = entityManager.getEntitiesByType('projectile');
+        projectiles.forEach(projectileId => {
+            const projectileSprite = this.scene.sprites.get(projectileId);
+            if (!projectileSprite || !projectileSprite.active) return;
+            
+            const projectileTransform = entityManager.getComponent(projectileId, 'transform');
+            if (!projectileTransform) return;
+            
+            // Get nearby entities for collision check
+            const nearbyEntities = this.spatialGrid.getNearby(
+                projectileTransform.x,
+                projectileTransform.y,
+                100 // Collision check radius
+            );
+            
+            // Check against nearby entities
+            nearbyEntities.forEach(targetId => {
+                if (targetId === projectileId) return;
+                
+                const targetSprite = this.scene.sprites.get(targetId);
+                if (!targetSprite || !targetSprite.active) return;
+                
+                if (this.checkCollision(projectileSprite, targetSprite)) {
+                    window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
+                        entityA: projectileId,
+                        entityB: targetId,
+                        type: 'projectile'
+                    });
+                }
+            });
+        });
+        
+        // Powerup collisions with player
+        const powerups = entityManager.getEntitiesByType('powerup');
+        const playerSprite = this.scene.sprites.get(this.scene.player);
+        
+        if (playerSprite && playerSprite.active) {
+            powerups.forEach(powerupId => {
+                const powerupSprite = this.scene.sprites.get(powerupId);
+                
+                if (powerupSprite && powerupSprite.active) {
+                    if (this.checkCollision(playerSprite, powerupSprite)) {
+                        window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
+                            entityA: this.scene.player,
+                            entityB: powerupId,
+                            type: 'powerup'
+                        });
+                    }
+                }
+            });
+        }
+        
+        // General entity collisions for physics responses
+        const allEntities = entityManager.query('transform', 'physics');
+        for (let i = 0; i < allEntities.length; i++) {
+            const entityA = allEntities[i];
+            const spriteA = this.scene.sprites.get(entityA);
+            if (!spriteA || !spriteA.active) continue;
+            
+            const transformA = entityManager.getComponent(entityA, 'transform');
+            const nearbyEntities = this.spatialGrid.getNearby(
+                transformA.x,
+                transformA.y,
+                200
+            );
+            
+            for (let j = 0; j < nearbyEntities.length; j++) {
+                const entityB = nearbyEntities[j];
+                if (entityA >= entityB) continue; // Avoid duplicate checks
+                
+                const spriteB = this.scene.sprites.get(entityB);
+                if (!spriteB || !spriteB.active) continue;
+                
+                if (this.checkCollision(spriteA, spriteB)) {
+                    window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
+                        entityA: entityA,
+                        entityB: entityB,
+                        type: 'physics'
+                    });
+                }
+            }
+        }
+    }
+    
+    checkCollision(spriteA, spriteB) {
+        // Use Matter.js collision detection
+        return this.scene.matter.collision.collides(spriteA.body, spriteB.body);
     }
     
     handleBoundaries(entities, entityManager) {
@@ -225,10 +359,9 @@ class PhysicsSystem {
     
     // Apply impulse to an entity
     applyImpulse(entityId, impulseX, impulseY) {
-        const physics = this.entityManager.getComponent(entityId, 'physics');
         const sprite = this.scene.sprites.get(entityId);
         
-        if (physics && sprite && sprite.body) {
+        if (sprite && sprite.body) {
             sprite.applyForce({ x: impulseX, y: impulseY });
         }
     }

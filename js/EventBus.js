@@ -1,4 +1,5 @@
 // EventBus.js - Central event system for decoupled communication
+// This is the ONLY module that should be exported to window
 
 class EventBus {
     constructor() {
@@ -88,24 +89,41 @@ class EventBus {
     }
 }
 
-// Game event types
+// Game event types - Comprehensive list
 const GameEvents = {
+    // System initialization
+    SYSTEM_INIT: 'system:init',
+    SYSTEM_READY: 'system:ready',
+    
     // Player events
     PLAYER_DAMAGE: 'player:damage',
+    PLAYER_DAMAGED: 'player:damaged',
     PLAYER_HEAL: 'player:heal',
     PLAYER_DEATH: 'player:death',
+    PLAYER_DIED: 'player:died',
     PLAYER_SHOOT: 'player:shoot',
     PLAYER_SHOOT_REQUEST: 'player:shoot_request',
     PLAYER_UPGRADE: 'player:upgrade',
     PLAYER_ABILITY: 'player:ability',
     PLAYER_CHARGE_UPDATE: 'player:charge_update',
+    PLAYER_BOOST_ACTIVATED: 'player:boost_activated',
+    PLAYER_BOOST_DEACTIVATED: 'player:boost_deactivated',
+    PLAYER_SHIELD_ACTIVATED: 'player:shield_activated',
+    PLAYER_SHIELD_DEACTIVATED: 'player:shield_deactivated',
+    PLAYER_NOVA_BLAST: 'player:nova_blast',
+    GET_PLAYER_ID: 'get:player_id',
+    PLAYER_ID_RESPONSE: 'player:id_response',
     
     // Enemy events
     ENEMY_SPAWN: 'enemy:spawn',
+    ENEMY_SPAWNED: 'enemy:spawned',
     ENEMY_DEATH: 'enemy:death',
+    ENEMY_KILLED: 'enemy:killed',
     ENEMY_DAMAGE: 'enemy:damage',
+    ENEMY_DAMAGED: 'enemy:damaged',
     ENEMY_SHOOT: 'enemy:shoot',
     ENEMY_SHOOT_REQUEST: 'enemy:shoot_request',
+    ENEMY_PHASE_CHANGE: 'enemy:phase_change',
     
     // Game state events
     GAME_START: 'game:start',
@@ -118,6 +136,8 @@ const GameEvents = {
     WAVE_START: 'wave:start',
     WAVE_COMPLETE: 'wave:complete',
     WAVE_SPAWN: 'wave:spawn',
+    WAVE_ANNOUNCED: 'wave:announced',
+    WAVE_REWARDS: 'wave:rewards',
     
     // Mission events
     MISSION_START: 'mission:start',
@@ -127,12 +147,17 @@ const GameEvents = {
     // Pickup events
     PICKUP_COLLECT: 'pickup:collect',
     PICKUP_SPAWN: 'pickup:spawn',
+    POWERUP_CREATED: 'powerup:created',
+    POWERUP_COLLECTED: 'powerup:collected',
+    SPAWN_POWERUP: 'spawn:powerup',
     
     // Combat events
     COLLISION: 'combat:collision',
+    COLLISION_DETECTED: 'collision:detected',
     PROJECTILE_HIT: 'combat:projectile_hit',
     PROJECTILE_CREATED: 'combat:projectile_created',
     PROJECTILE_DESTROYED: 'combat:projectile_destroyed',
+    PROJECTILE_EXPIRED: 'projectile:expired',
     EXPLOSION: 'combat:explosion',
     COMBO_INCREASE: 'combat:combo_increase',
     COMBO_BREAK: 'combat:combo_break',
@@ -143,6 +168,10 @@ const GameEvents = {
     EFFECT_IMPACT: 'effect:impact',
     EFFECT_SHOCKWAVE: 'effect:shockwave',
     EFFECT_TRAIL: 'effect:trail',
+    CREATE_TRAIL: 'create:trail',
+    CREATE_SHOCKWAVE_EFFECT: 'create:shockwave_effect',
+    CREATE_EXPLOSION_FORCE: 'create:explosion_force',
+    TITAN_SHOCKWAVE: 'titan:shockwave',
     
     // UI events
     UI_UPDATE: 'ui:update',
@@ -152,26 +181,64 @@ const GameEvents = {
     UI_SHOW_MESSAGE: 'ui:show_message',
     UI_HIDE_MESSAGE: 'ui:hide_message',
     UI_UPDATE_CHARGE: 'ui:update_charge',
+    SHOW_GAME_MESSAGE: 'show:game_message',
+    DISMISS_GAME_MESSAGE: 'dismiss:game_message',
     
     // Audio events
     AUDIO_PLAY: 'audio:play',
     AUDIO_STOP: 'audio:stop',
     AUDIO_VOLUME: 'audio:volume',
+    AUDIO_PLAY_MUSIC: 'audio:play_music',
+    AUDIO_STOP_MUSIC: 'audio:stop_music',
+    AUDIO_SET_MUTE: 'audio:set_mute',
     
     // Physics events
     GRAVITY_WELL: 'physics:gravity_well',
     FORCE_APPLIED: 'physics:force_applied',
     BOUNDARY_WRAP: 'physics:boundary_wrap',
-    COLLISION_DETECTED: 'physics:collision_detected',
     
     // Entity events
     ENTITY_CREATED: 'entity:created',
-    ENTITY_DESTROYED: 'entity:destroyed'
+    ENTITY_DESTROYED: 'entity:destroyed',
+    DESTROY_ENTITY: 'destroy:entity',
+    CREATE_ENTITY: 'create:entity',
+    
+    // Camera events
+    CAMERA_SHAKE: 'camera:shake',
+    CAMERA_FLASH: 'camera:flash',
+    
+    // Upgrade events
+    UPGRADE_REQUEST: 'upgrade:request',
+    UPGRADE_APPLIED: 'upgrade:applied',
+    QUERY_UPGRADE_COST: 'query:upgrade_cost',
+    UPGRADE_INFO_RESPONSE: 'upgrade:info_response',
+    
+    // State management
+    STATE_UPDATE: 'state:update',
+    STATE_GET: 'state:get',
+    STATE_RESPONSE: 'state:response',
+    
+    // Factory events
+    CREATE_PLAYER: 'create:player',
+    CREATE_ENEMY: 'create:enemy',
+    CREATE_POWERUP: 'create:powerup',
+    CREATE_PROJECTILE: 'create:projectile',
+    
+    // Manager events
+    REGISTER_ENTITY_MANAGER: 'register:entity_manager',
+    REGISTER_GAME_STATE: 'register:game_state',
+    GET_ENTITY_MANAGER: 'get:entity_manager',
+    GET_GAME_STATE: 'get:game_state',
+    MANAGER_RESPONSE: 'manager:response',
+    
+    // Texture creation
+    CREATE_TEXTURES: 'create:textures',
+    TEXTURES_CREATED: 'textures:created'
 };
 
 // Create singleton instance
 const eventBus = new EventBus();
 
-// Export for use in other modules
+// This is the ONLY export to window in the entire codebase
 window.EventBus = eventBus;
 window.GameEvents = GameEvents;

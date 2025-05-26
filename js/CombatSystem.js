@@ -1,4 +1,5 @@
-// CombatSystem.js - Handles all combat-related logic including damage, death, and pickups
+// CombatSystem.js - Handles all combat-related logic including damage calculation and validation
+// REFACTORED: Removed rendering, UI, and upgrade responsibilities. Now purely handles combat logic.
 
 class CombatSystem {
     constructor(scene) {
@@ -8,7 +9,20 @@ class CombatSystem {
     }
     
     init() {
-        // Initialize combat system
+        // Listen for collision events from PhysicsSystem
+        window.EventBus.on(window.GameEvents.COLLISION_DETECTED, (data) => {
+            this.handleCollision(data);
+        });
+        
+        // Listen for damage events
+        window.EventBus.on(window.GameEvents.PROJECTILE_HIT, (data) => {
+            this.handleProjectileHit(data);
+        });
+        
+        // Listen for enemy shoot requests
+        window.EventBus.on(window.GameEvents.ENEMY_SHOOT_REQUEST, (data) => {
+            this.handleEnemyShootRequest(data);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -39,6 +53,42 @@ class CombatSystem {
             
             if (newTimer === 0) {
                 this.gameState.breakCombo();
+                window.EventBus.emit(window.GameEvents.COMBO_BREAK);
+            }
+        }
+    }
+    
+    handleCollision(data) {
+        const { entityA, entityB, type } = data;
+        
+        if (type === 'projectile') {
+            // Validate projectile collision
+            const projectileData = this.entityManager.getComponent(entityA, 'projectile');
+            if (!projectileData) return;
+            
+            // Check if can damage target
+            if (this.canDamageTarget(entityA, entityB)) {
+                // Check if already hit (for penetrating projectiles)
+                if (!projectileData.hitEntities.has(entityB)) {
+                    projectileData.hitEntities.add(entityB);
+                    
+                    // Apply damage
+                    this.applyDamage(entityB, projectileData.damage, entityA);
+                    
+                    // Destroy projectile if not penetrating
+                    if (!projectileData.penetrating) {
+                        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+                            entityId: entityA
+                        });
+                    }
+                }
+            }
+        } else if (type === 'powerup') {
+            // Handle powerup collection
+            const powerupData = this.entityManager.getComponent(entityB, 'powerup');
+            if (powerupData && !powerupData.collected) {
+                powerupData.collected = true;
+                this.collectPowerup(entityA, entityB, powerupData);
             }
         }
     }
@@ -47,10 +97,59 @@ class CombatSystem {
         const targetEntity = this.entityManager.getEntity(data.targetId);
         if (!targetEntity) return;
         
+        this.applyDamage(data.targetId, data.damage, data.projectileId);
+    }
+    
+    handleEnemyShootRequest(data) {
+        // Validate the shoot request
+        const weapon = this.entityManager.getComponent(data.shooterId, 'weapon');
+        if (!weapon || weapon.lastFireTime > 0) return;
+        
+        // Add some inaccuracy based on AI skill
+        const ai = this.entityManager.getComponent(data.shooterId, 'ai');
+        if (ai) {
+            const accuracy = 1 - (ai.fearLevel * 0.3);
+            const spread = (1 - accuracy) * 0.3;
+            data.angle += (Math.random() - 0.5) * spread;
+        }
+        
+        // Forward to weapon system
+        window.EventBus.emit(window.GameEvents.ENEMY_SHOOT, data);
+    }
+    
+    canDamageTarget(projectileId, targetId) {
+        const projectileData = this.entityManager.getComponent(projectileId, 'projectile');
+        const targetEntity = this.entityManager.getEntity(targetId);
+        
+        if (!projectileData || !targetEntity) return false;
+        
+        // Can't damage self
+        if (projectileData.ownerId === targetId) return false;
+        
+        // Can't damage other projectiles or powerups
+        if (targetEntity.type === 'projectile' || targetEntity.type === 'powerup') return false;
+        
+        // Can't damage planets
+        if (targetEntity.type === 'planet') return false;
+        
+        // Check factions
+        const targetFaction = this.entityManager.getComponent(targetId, 'faction');
+        if (targetFaction && projectileData.ownerFaction) {
+            if (targetFaction.name === projectileData.ownerFaction) return false;
+            if (targetFaction.friendlyWith.has(projectileData.ownerFaction)) return false;
+        }
+        
+        return true;
+    }
+    
+    applyDamage(targetId, damage, sourceId = null) {
+        const targetEntity = this.entityManager.getEntity(targetId);
+        if (!targetEntity) return;
+        
         if (targetEntity.type === 'player') {
-            this.damagePlayer(data.damage);
+            this.damagePlayer(damage);
         } else if (targetEntity.type === 'enemy') {
-            this.damageEnemy(data.targetId, data.damage);
+            this.damageEnemy(targetId, damage);
         }
     }
     
@@ -61,13 +160,13 @@ class CombatSystem {
         const actualDamage = this.gameState.damagePlayer(damage);
         
         if (actualDamage > 0) {
-            // Visual feedback
-            this.scene.systems.render.shake(200, 0.01);
-            this.scene.systems.render.flash(100, 255, 0, 0, true);
-            AudioManager.play('hit');
+            // Only emit event for other systems to handle
+            window.EventBus.emit(window.GameEvents.PLAYER_DAMAGED, { 
+                damage: actualDamage 
+            });
             
-            // UI feedback
-            window.EventBus.emit(window.GameEvents.PLAYER_DAMAGE, { damage: actualDamage });
+            // Play sound
+            AudioManager.play('hit');
         }
     }
     
@@ -80,27 +179,23 @@ class CombatSystem {
         // Apply damage
         health.current -= damage;
         
-        // Visual feedback
-        this.scene.systems.render.flashSprite(enemyId, 0xff0000);
-        
         if (health.current <= 0) {
             // Enemy defeated
-            window.EventBus.emit(window.GameEvents.ENEMY_DEATH, {
+            this.handleEnemyDeath(enemyId, transform);
+        } else {
+            // Enemy damaged but alive
+            window.EventBus.emit(window.GameEvents.ENEMY_DAMAGED, {
                 entityId: enemyId,
-                position: { x: transform.x, y: transform.y }
+                damage: damage,
+                position: transform ? { x: transform.x, y: transform.y } : null
             });
             
-            // Destroy enemy
-            this.scene.systems.render.destroySprite(enemyId);
-            this.entityManager.destroyEntity(enemyId);
-        } else {
-            // Still alive
+            // Play sound
             AudioManager.play('hit');
-            this.scene.systems.effects.createDamageNumber(transform.x, transform.y, damage);
         }
     }
     
-    handleEnemyDeath(data) {
+    handleEnemyDeath(enemyId, transform) {
         // Update game state
         const combo = this.gameState.get('game.combo');
         const points = 100 * (combo + 1);
@@ -115,83 +210,94 @@ class CombatSystem {
         const remaining = this.gameState.get('waves.enemiesRemaining') - 1;
         this.gameState.update('waves.enemiesRemaining', remaining);
         
-        // Effects
-        this.scene.systems.effects.createExplosion(data.position.x, data.position.y);
-        this.scene.systems.effects.createDamageNumber(
-            data.position.x, 
-            data.position.y, 
-            points, 
-            combo > 5
-        );
+        // Emit events for other systems
+        window.EventBus.emit(window.GameEvents.ENEMY_KILLED, {
+            entityId: enemyId,
+            position: transform ? { x: transform.x, y: transform.y } : null,
+            points: points,
+            combo: combo + 1
+        });
         
         // Spawn powerup chance
-        if (Math.random() < 0.3) {
-            const factory = new EntityFactory(this.scene);
+        if (Math.random() < 0.3 && transform) {
             const type = Phaser.Math.Pick(['health', 'energy', 'credits']);
-            factory.createPowerup(data.position.x, data.position.y, type);
+            window.EventBus.emit(window.GameEvents.SPAWN_POWERUP, {
+                x: transform.x,
+                y: transform.y,
+                type: type
+            });
         }
         
         // Check wave completion
         if (remaining <= 0 && this.gameState.get('waves.spawnsRemaining') <= 0) {
             window.EventBus.emit(window.GameEvents.WAVE_COMPLETE);
         }
-    }
-    
-    handlePlayerDeath() {
-        const transform = this.entityManager.getComponent(this.scene.player, 'transform');
-        if (!transform) return;
         
-        // Death explosion
-        this.scene.systems.effects.createExplosion(
-            transform.x,
-            transform.y,
-            2.0,
-            0x00ffff
-        );
-        
-        // Visual effects
-        this.scene.systems.render.setSpriteVisible(this.scene.player, false);
-        this.scene.systems.render.shake(1000, 0.03);
-        this.scene.systems.render.flash(1000, 255, 0, 0);
-        
-        // Delay before game over
-        this.scene.time.delayedCall(2000, () => {
-            this.scene.handleGameOver();
+        // Destroy the entity
+        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+            entityId: enemyId
         });
     }
     
-    handlePickupCollect(data) {
-        const powerup = this.entityManager.getComponent(data.powerupId, 'powerup');
-        const transform = this.entityManager.getComponent(data.powerupId, 'transform');
-        
-        if (!powerup || !transform || powerup.collected) return;
-        
-        powerup.collected = true;
+    collectPowerup(playerId, powerupId, powerupData) {
+        const transform = this.entityManager.getComponent(powerupId, 'transform');
         
         // Apply effect based on type
-        switch (data.type) {
+        switch (powerupData.type) {
             case 'health':
-                this.gameState.healPlayer(data.value);
-                window.EventBus.emit(window.GameEvents.PLAYER_HEAL, { amount: data.value });
+                this.gameState.healPlayer(powerupData.value);
+                window.EventBus.emit(window.GameEvents.PLAYER_HEAL, { 
+                    amount: powerupData.value 
+                });
                 break;
                 
             case 'energy':
                 const currentEnergy = this.gameState.get('player.energy');
                 const maxEnergy = this.gameState.get('player.maxEnergy');
-                this.gameState.update('player.energy', Math.min(maxEnergy, currentEnergy + data.value));
+                this.gameState.update('player.energy', 
+                    Math.min(maxEnergy, currentEnergy + powerupData.value)
+                );
                 break;
                 
             case 'credits':
-                this.gameState.addCredits(data.value);
+                this.gameState.addCredits(powerupData.value);
                 break;
         }
         
-        // Effects and cleanup
-        this.scene.systems.effects.createPowerupCollect(transform.x, transform.y, data.type);
-        this.scene.systems.render.destroySprite(data.powerupId);
-        this.entityManager.destroyEntity(data.powerupId);
+        // Emit collection event
+        window.EventBus.emit(window.GameEvents.POWERUP_COLLECTED, {
+            powerupId: powerupId,
+            type: powerupData.type,
+            value: powerupData.value,
+            position: transform ? { x: transform.x, y: transform.y } : null
+        });
         
+        // Play sound
         AudioManager.play('powerup');
+        
+        // Destroy the powerup
+        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+            entityId: powerupId
+        });
+    }
+    
+    handlePlayerDeath() {
+        const transform = this.entityManager.getComponent(this.scene.player, 'transform');
+        
+        // Emit death event
+        window.EventBus.emit(window.GameEvents.PLAYER_DIED, {
+            position: transform ? { x: transform.x, y: transform.y } : null
+        });
+        
+        // Update game state
+        this.gameState.update('game.gameOver', true);
+        
+        // Delay before game over
+        this.scene.time.delayedCall(2000, () => {
+            window.EventBus.emit(window.GameEvents.GAME_OVER, {
+                victory: false
+            });
+        });
     }
     
     processWaveRewards(waveNumber) {
@@ -202,54 +308,12 @@ class CombatSystem {
         
         this.gameState.update('waves.waveInProgress', false);
         
-        // Notification
-        window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
-            message: `Wave ${waveNumber} Complete! +${waveBonus} points`,
-            type: 'success',
-            icon: 'fa-trophy'
+        // Emit reward event
+        window.EventBus.emit(window.GameEvents.WAVE_REWARDS, {
+            waveNumber: waveNumber,
+            points: waveBonus,
+            credits: 500 * waveNumber
         });
-    }
-    
-    handleUpgrade(stat) {
-        const stats = this.gameState.get('player.stats');
-        const upgrades = this.gameState.get('player.upgrades');
-        const credits = this.gameState.get('game.credits');
-        
-        const upgradeValues = {
-            damage: { stat: 5, key: 'damage', cost: 50 },
-            speed: { stat: 0.2, key: 'speed', cost: 40 },
-            defense: { stat: 3, key: 'defense', cost: 60 }
-        };
-        
-        const upgrade = upgradeValues[stat];
-        if (!upgrade) return;
-        
-        // Calculate cost
-        const currentLevel = upgrades[stat] || 0;
-        const cost = Math.floor(upgrade.cost * Math.pow(1.5, currentLevel));
-        
-        if (credits >= cost) {
-            // Apply upgrade
-            stats[upgrade.key] += upgrade.stat;
-            upgrades[stat] = currentLevel + 1;
-            
-            this.gameState.update('player.stats', stats);
-            this.gameState.update('player.upgrades', upgrades);
-            this.gameState.update('game.credits', credits - cost);
-            
-            AudioManager.play('powerup');
-            
-            window.EventBus.emit(window.GameEvents.PLAYER_UPGRADE, {
-                stat: stat,
-                level: currentLevel + 1
-            });
-        } else {
-            window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
-                message: 'Not enough credits!',
-                type: 'error',
-                icon: 'fa-coins'
-            });
-        }
     }
 }
 
