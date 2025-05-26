@@ -2,17 +2,22 @@
 // REFACTORED: Removed visual effects and collision setup, now purely creates entities
 
 class EntityFactory {
-    constructor(scene) {
+    constructor(entityManager, eventBus) {
+        this.entityManager = entityManager;
+        this.eventBus = eventBus;
+        this.scene = null;
+    }
+    
+    setScene(scene) {
         this.scene = scene;
-        this.entityManager = window.EntityManager;
     }
     
     createPlayer(x, y) {
         // Create player entity with all components
         const playerId = this.entityManager.createEntity('player', {
-            transform: Components.transform(x, y),
-            physics: Components.physics(5, 0, 15, 40),
-            health: Components.health(
+            transform: { x: x, y: y, rotation: 0, scale: 1, prevX: x, prevY: y },
+            physics: { velocity: { x: 5, y: 0 }, acceleration: { x: 0, y: 0 }, mass: 15, radius: 40, damping: 0.999, maxSpeed: 15, elasticity: 0.8 },
+            health: {
                 GameConfig.player.initialHealth,
                 GameConfig.player.initialHealth
             ),
@@ -40,9 +45,9 @@ class EntityFactory {
         this.scene.sprites.set(playerId, sprite);
         
         // Request trail creation
-        window.EventBus.emit(window.GameEvents.CREATE_TRAIL, {
+        this.eventBus.emit('CREATE_TRAIL', {
             entityId: playerId,
-            trailConfig: Components.trail(20, 0x00ffff, 3)
+            trailConfig: { points: [], maxLength: 20, color: 0x00ffff, width: 3, alpha: 0.5, fadeRate: 0.05 }
         });
         
         return playerId;
@@ -176,7 +181,7 @@ class EntityFactory {
         this.scene.powerupGroup.add(sprite);
         
         // Emit creation event for RenderSystem to handle animations
-        window.EventBus.emit(window.GameEvents.POWERUP_CREATED, {
+        this.eventBus.emit('POWERUP_CREATED', {
             entityId: powerupId,
             type: type,
             position: { x, y }
@@ -239,7 +244,7 @@ class EntityFactory {
                 Components.trail(10, isCharged ? 0x00ffff : 0xffff00, 3)
             );
             
-            window.EventBus.emit(window.GameEvents.CREATE_TRAIL, {
+            this.eventBus.emit('CREATE_TRAIL', {
                 entityId: projectileId,
                 trailConfig: Components.trail(10, isCharged ? 0x00ffff : 0xffff00, 3)
             });
@@ -252,5 +257,4 @@ class EntityFactory {
     }
 }
 
-// Export for use
-window.EntityFactory = EntityFactory;
+// EntityFactory will be instantiated by GameInitializer

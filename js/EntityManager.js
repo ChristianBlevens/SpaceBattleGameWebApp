@@ -1,7 +1,8 @@
 // EntityManager.js - Entity Component System for game objects
 
 class EntityManager {
-    constructor() {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
         this.entities = new Map();
         this.components = new Map();
         this.systems = [];
@@ -34,7 +35,7 @@ class EntityManager {
         });
         
         // Emit creation event
-        window.EventBus.emit(window.GameEvents.ENTITY_CREATED, { id, type });
+        this.eventBus.emit('ENTITY_CREATED', { id, type });
         
         return id;
     }
@@ -147,7 +148,7 @@ class EntityManager {
         this.entities.delete(entityId);
         
         // Emit destruction event
-        window.EventBus.emit(window.GameEvents.ENTITY_DESTROYED, { id: entityId, type: entity.type });
+        this.eventBus.emit('ENTITY_DESTROYED', { id: entityId, type: entity.type });
     }
     
     // Add system to process entities
@@ -329,9 +330,5 @@ const Components = {
     }
 };
 
-// Create singleton instance
-const entityManager = new EntityManager();
-
-// Export for use in other modules
-window.EntityManager = entityManager;
-window.Components = Components;
+// Export Components for use by other modules
+// EntityManager will be instantiated by GameInitializer

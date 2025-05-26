@@ -2,9 +2,11 @@
 // COMPLETE: Now includes all effects functionality merged from EffectsSystem
 
 class RenderSystem {
-    constructor(scene) {
+    constructor(scene, eventBus, entityManager) {
         this.scene = scene;
-        this.entityManager = window.EntityManager;
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.playerId = null;
         
         // Camera settings
         this.cameraZoom = 0.4;
@@ -22,8 +24,12 @@ class RenderSystem {
     }
     
     init() {
+        // Get player ID
+        this.playerId = this.scene.gameState ? this.scene.gameState.getPlayerId() : null;
+        
         this.setupCamera();
         this.setupEventListeners();
+        this.createTextures();
     }
     
     setupCamera() {
@@ -36,11 +42,11 @@ class RenderSystem {
     
     setupEventListeners() {
         // Visual effect events
-        window.EventBus.on(window.GameEvents.POWERUP_CREATED, (data) => {
+        this.eventBus.on('POWERUP_CREATED', (data) => {
             this.animatePowerup(data.entityId);
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_DAMAGED, (data) => {
+        this.eventBus.on('ENEMY_DAMAGED', (data) => {
             this.flashSprite(data.entityId, 0xff0000);
             if (data.position) {
                 this.createDamageNumber(
@@ -51,30 +57,30 @@ class RenderSystem {
             }
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_DAMAGED, () => {
+        this.eventBus.on('PLAYER_DAMAGED', () => {
             this.shake(200, 0.01);
             this.flash(100, 255, 0, 0, true);
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_PHASE_CHANGE, (data) => {
+        this.eventBus.on('ENEMY_PHASE_CHANGE', (data) => {
             this.setSpriteAlpha(data.entityId, data.alpha);
         });
         
-        window.EventBus.on(window.GameEvents.CAMERA_SHAKE, (data) => {
+        this.eventBus.on('CAMERA_SHAKE', (data) => {
             this.shake(data.duration, data.intensity);
         });
         
         // Game message events
-        window.EventBus.on(window.GameEvents.SHOW_GAME_MESSAGE, (data) => {
+        this.eventBus.on('SHOW_GAME_MESSAGE', (data) => {
             this.createGameMessage(data);
         });
         
-        window.EventBus.on(window.GameEvents.DISMISS_GAME_MESSAGE, (data) => {
+        this.eventBus.on('DISMISS_GAME_MESSAGE', (data) => {
             this.dismissGameMessage(data.messageId, data.callback);
         });
         
         // Entity lifecycle events
-        window.EventBus.on(window.GameEvents.ENEMY_SPAWNED, (data) => {
+        this.eventBus.on('ENEMY_SPAWNED', (data) => {
             this.createSpawnEffect(
                 data.position.x,
                 data.position.y,
@@ -82,41 +88,41 @@ class RenderSystem {
             );
         });
         
-        window.EventBus.on(window.GameEvents.CREATE_TRAIL, (data) => {
+        this.eventBus.on('CREATE_TRAIL', (data) => {
             const trail = this.scene.add.graphics();
             this.scene.trails.set(data.entityId, trail);
         });
         
-        window.EventBus.on(window.GameEvents.CREATE_SHOCKWAVE_EFFECT, (data) => {
+        this.eventBus.on('CREATE_SHOCKWAVE_EFFECT', (data) => {
             this.createShockwave(data.x, data.y, data.color);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_BOOST_ACTIVATED, (data) => {
+        this.eventBus.on('PLAYER_BOOST_ACTIVATED', (data) => {
             this.setSpriteTint(data.entityId, 0xffff00);
             this.createBoostEffect(data.entityId);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_BOOST_DEACTIVATED, (data) => {
+        this.eventBus.on('PLAYER_BOOST_DEACTIVATED', (data) => {
             this.clearSpriteTint(data.entityId);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_SHIELD_ACTIVATED, (data) => {
+        this.eventBus.on('PLAYER_SHIELD_ACTIVATED', (data) => {
             this.createShieldVisual(data.entityId, data.duration);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_SHIELD_DEACTIVATED, (data) => {
+        this.eventBus.on('PLAYER_SHIELD_DEACTIVATED', (data) => {
             this.removeShieldVisual(data.entityId);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_NOVA_BLAST, (data) => {
+        this.eventBus.on('PLAYER_NOVA_BLAST', (data) => {
             this.createShockwave(data.x, data.y, 0xff00ff);
         });
         
-        window.EventBus.on(window.GameEvents.CAMERA_FLASH, (data) => {
+        this.eventBus.on('CAMERA_FLASH', (data) => {
             this.flash(data.duration, data.color.r, data.color.g, data.color.b);
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_KILLED, (data) => {
+        this.eventBus.on('ENEMY_KILLED', (data) => {
             if (data.position) {
                 this.createExplosion(
                     data.position.x, 
@@ -131,8 +137,8 @@ class RenderSystem {
             }
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_DIED, (data) => {
-            this.setSpriteVisible(this.scene.player, false);
+        this.eventBus.on('PLAYER_DIED', (data) => {
+            this.setSpriteVisible(this.playerId, false);
             if (data.position) {
                 this.createExplosion(
                     data.position.x,
@@ -145,7 +151,7 @@ class RenderSystem {
             this.flash(1000, 255, 0, 0);
         });
         
-        window.EventBus.on(window.GameEvents.POWERUP_COLLECTED, (data) => {
+        this.eventBus.on('POWERUP_COLLECTED', (data) => {
             if (data.position) {
                 this.createPowerupCollect(
                     data.position.x, 
@@ -155,7 +161,7 @@ class RenderSystem {
             }
         });
         
-        window.EventBus.on(window.GameEvents.PROJECTILE_CREATED, (data) => {
+        this.eventBus.on('PROJECTILE_CREATED', (data) => {
             if (data.position && data.isCharged) {
                 // Add glow effect for charged projectiles
                 const sprite = this.scene.sprites.get(data.projectileId);
@@ -172,19 +178,19 @@ class RenderSystem {
             }
         });
         
-        window.EventBus.on(window.GameEvents.PROJECTILE_EXPIRED, (data) => {
+        this.eventBus.on('PROJECTILE_EXPIRED', (data) => {
             const sprite = this.scene.sprites.get(data.projectileId);
             if (sprite) {
                 this.createImpact(sprite.x, sprite.y);
             }
         });
         
-        window.EventBus.on(window.GameEvents.TITAN_SHOCKWAVE, (data) => {
+        this.eventBus.on('TITAN_SHOCKWAVE', (data) => {
             this.createShockwave(data.x, data.y, 0xff9966);
         });
         
         // Wave announcements
-        window.EventBus.on(window.GameEvents.WAVE_ANNOUNCED, (data) => {
+        this.eventBus.on('WAVE_ANNOUNCED', (data) => {
             const messages = [];
             let messageType = 'wave-start';
             
@@ -205,7 +211,7 @@ class RenderSystem {
             });
         });
         
-        window.EventBus.on(window.GameEvents.WAVE_REWARDS, (data) => {
+        this.eventBus.on('WAVE_REWARDS', (data) => {
             this.createGameMessage({
                 title: `WAVE ${data.waveNumber} COMPLETE!`,
                 subtitle: `+${data.points} POINTS`,
@@ -214,15 +220,15 @@ class RenderSystem {
             });
         });
         
-        window.EventBus.on(window.GameEvents.COMBO_INCREASE, (data) => {
+        this.eventBus.on('COMBO_INCREASE', (data) => {
             this.showComboMessage(data.combo);
         });
         
-        window.EventBus.on(window.GameEvents.COMBO_BREAK, () => {
+        this.eventBus.on('COMBO_BREAK', () => {
             this.hideComboMessage();
         });
         
-        window.EventBus.on(window.GameEvents.GAME_OVER, (data) => {
+        this.eventBus.on('GAME_OVER', (data) => {
             this.createGameMessage({
                 title: data.victory ? 'VICTORY!' : 'GAME OVER',
                 subtitle: data.victory ? 'ALL WAVES COMPLETED' : 'PRESS R TO RESTART',
@@ -232,7 +238,7 @@ class RenderSystem {
         });
         
         // Entity destruction
-        window.EventBus.on(window.GameEvents.DESTROY_ENTITY, (data) => {
+        this.eventBus.on('DESTROY_ENTITY', (data) => {
             this.destroySprite(data.entityId);
         });
         
@@ -1191,7 +1197,8 @@ class RenderSystem {
     
     // ===== TEXTURE CREATION =====
     
-    static createTextures(scene) {
+    createTextures() {
+        const scene = this.scene;
         const graphics = scene.make.graphics({ add: false });
         
         // Player
@@ -1339,5 +1346,4 @@ class RenderSystem {
     }
 }
 
-// Export for use
-window.RenderSystem = RenderSystem;
+// RenderSystem will be instantiated by GameInitializer

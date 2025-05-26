@@ -5,13 +5,8 @@ class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'Game' });
         
-        // Core references
-        this.entityManager = window.EntityManager;
-        this.gameState = window.GameState;
-        this.eventBus = window.EventBus;
-        
-        // Game entities
-        this.player = null;
+        // Game initializer will manage all systems
+        this.gameInitializer = null;
         
         // Entity collections
         this.sprites = new Map();
@@ -19,21 +14,14 @@ class GameScene extends Phaser.Scene {
         this.enemyGroup = null;
         this.powerupGroup = null;
         this.projectileGroup = null;
-        
-        // Systems
-        this.systems = {};
     }
     
     preload() {
-        // Delegate texture creation to RenderSystem
-        RenderSystem.createTextures(this);
+        // Create textures for the game
+        this.createTextures();
     }
     
     create() {
-        // Reset state
-        this.gameState.reset();
-        this.entityManager.clear();
-        
         // Initialize collections
         this.sprites = new Map();
         this.trails = new Map();
@@ -45,87 +33,100 @@ class GameScene extends Phaser.Scene {
         this.matter.world.setBounds(0, 0, GameConfig.world.width, GameConfig.world.height);
         this.matter.world.setGravity(0, 0);
         
-        // Initialize systems
-        this.initializeSystems();
+        // Initialize game systems using GameInitializer
+        this.gameInitializer = new GameInitializer(this);
+        this.gameInitializer.initializeAllSystems();
+        
+        // Get references to core systems
+        const { eventBus, renderSystem, waveSystem, entityFactory, audioManager } = this.gameInitializer;
         
         // Create environment through RenderSystem
-        this.systems.render.createEnvironment();
+        renderSystem.createEnvironment();
         
         // Create initial entities through factory
-        this.createInitialEntities();
+        this.createInitialEntities(entityFactory);
         
         // Setup event listeners
         this.setupEventListeners();
         
         // Start game
-        window.EventBus.emit(window.GameEvents.GAME_START);
+        eventBus.emit('GAME_START');
         
         // Start first wave after delay
         this.time.delayedCall(2000, () => {
-            this.systems.wave.startWave(1);
+            waveSystem.startWave(1);
         });
         
         // Start UI updates
         this.startUIUpdates();
         
         // Play music
-        AudioManager.playMusic();
+        eventBus.emit('AUDIO_PLAY_MUSIC');
     }
     
     update(time, delta) {
-        if (this.gameState.get('game.paused')) return;
+        if (this.gameInitializer.gameState.get('game.paused')) return;
         
         const dt = delta / 1000;
         
-        // Update systems in correct order
-        this.systems.input.update(dt);
-        this.systems.physics.update(dt, this.entityManager);
-        this.systems.ai.update(dt, this.entityManager);
-        this.systems.weapon.update(dt, this.entityManager);
-        this.systems.combat.update(dt, this.entityManager);
-        this.systems.wave.update(dt);
-        this.systems.ability.update(dt);
-        this.systems.render.update(dt);  // Now handles both rendering and effects
+        // Update all systems through initializer
+        this.gameInitializer.updateAllSystems(dt);
         
         // Update game time
-        const playTime = this.gameState.get('game.playTime') + delta;
-        this.gameState.update('game.playTime', playTime);
+        const playTime = this.gameInitializer.gameState.get('game.playTime') + delta;
+        this.gameInitializer.gameState.update('game.playTime', playTime);
     }
     
-    initializeSystems() {
-        // Create entity factory (shared by multiple systems)
-        const entityFactory = new EntityFactory(this);
+    createTextures() {
+        // Create simple geometric textures
+        const graphics = this.add.graphics();
         
-        // Initialize all systems
-        this.systems = {
-            physics: new PhysicsSystem(this),
-            combat: new CombatSystem(this),
-            weapon: new WeaponSystem(this),
-            ai: new AISystem(this),
-            wave: new WaveSystem(this),
-            input: new InputSystem(this),
-            render: new RenderSystem(this),  // Now includes effects functionality
-            ability: new AbilitySystem(this)  // Now includes upgrade functionality
-        };
+        // Player ship (triangle)
+        graphics.fillStyle(0x00ffff, 1);
+        graphics.fillTriangle(0, 16, 32, 8, 0, 0);
+        graphics.generateTexture('player', 32, 16);
+        graphics.clear();
         
-        // Initialize UIManager with scene reference
-        window.UIManager.init();
+        // Enemy ship
+        graphics.fillStyle(0xff0066, 1);
+        graphics.fillTriangle(0, 0, 32, 8, 0, 16);
+        graphics.generateTexture('enemy', 32, 16);
+        graphics.clear();
         
-        // Initialize systems with dependencies
-        Object.values(this.systems).forEach(system => {
-            if (system.init) {
-                system.init(this.entityManager);
-            }
-        });
+        // Projectile
+        graphics.fillStyle(0xffff00, 1);
+        graphics.fillCircle(4, 4, 4);
+        graphics.generateTexture('projectile', 8, 8);
+        graphics.clear();
+        
+        // Powerup
+        graphics.fillStyle(0x00ff00, 1);
+        graphics.fillRect(0, 0, 16, 16);
+        graphics.generateTexture('powerup', 16, 16);
+        graphics.clear();
+        
+        // Planet
+        graphics.fillStyle(0x6666ff, 1);
+        graphics.fillCircle(32, 32, 32);
+        graphics.generateTexture('planet', 64, 64);
+        graphics.clear();
+        
+        // Star
+        graphics.fillStyle(0xffffaa, 1);
+        graphics.fillCircle(64, 64, 64);
+        graphics.generateTexture('star', 128, 128);
+        
+        graphics.destroy();
     }
     
-    createInitialEntities() {
-        const factory = new EntityFactory(this);
-        
+    createInitialEntities(entityFactory) {
         // Create player
         const startX = GameConfig.world.width * 0.2;
         const startY = GameConfig.world.height * 0.5;
-        this.player = factory.createPlayer(startX, startY);
+        const playerId = entityFactory.createPlayer(startX, startY);
+        
+        // Store player ID in game state
+        this.gameInitializer.gameState.setPlayerId(playerId);
         
         // Create orbital systems
         const orbitalSystems = [
@@ -137,7 +138,7 @@ class GameScene extends Phaser.Scene {
         ];
         
         orbitalSystems.forEach(system => {
-            factory.createOrbitalSystem(system.x, system.y, system.planets, system.size);
+            entityFactory.createOrbitalSystem(system.x, system.y, system.planets, system.size);
         });
         
         // Create wandering planets
@@ -146,12 +147,12 @@ class GameScene extends Phaser.Scene {
             const y = Phaser.Math.Between(1000, GameConfig.world.height - 1000);
             const size = Phaser.Math.Pick(['small', 'medium']);
             
-            const planet = factory.createPlanet(x, y, size);
+            const planet = entityFactory.createPlanet(x, y, size);
             
             // Random velocity
             const angle = Math.random() * Math.PI * 2;
             const speed = Phaser.Math.Between(1, 3);
-            const physics = this.entityManager.getComponent(planet, 'physics');
+            const physics = this.gameInitializer.entityManager.getComponent(planet, 'physics');
             if (physics) {
                 physics.velocity.x = Math.cos(angle) * speed;
                 physics.velocity.y = Math.sin(angle) * speed;
@@ -160,25 +161,26 @@ class GameScene extends Phaser.Scene {
     }
     
     setupEventListeners() {
+        const { eventBus, entityManager, entityFactory } = this.gameInitializer;
+        
         // Game state events
-        this.eventBus.on(window.GameEvents.GAME_PAUSE, (data) => {
+        eventBus.on('GAME_PAUSE', (data) => {
             this.handlePause(data.paused);
         });
         
         // Wave events
-        this.eventBus.on(window.GameEvents.WAVE_COMPLETE, () => {
+        eventBus.on('WAVE_COMPLETE', () => {
             this.handleWaveComplete();
         });
         
         // Entity lifecycle events
-        this.eventBus.on(window.GameEvents.DESTROY_ENTITY, (data) => {
-            this.entityManager.destroyEntity(data.entityId);
+        eventBus.on('DESTROY_ENTITY', (data) => {
+            entityManager.destroyEntity(data.entityId);
         });
         
         // Powerup spawning
-        this.eventBus.on(window.GameEvents.SPAWN_POWERUP, (data) => {
-            const factory = new EntityFactory(this);
-            factory.createPowerup(data.x, data.y, data.type);
+        eventBus.on('SPAWN_POWERUP', (data) => {
+            entityFactory.createPowerup(data.x, data.y, data.type);
         });
         
         // UI commands
@@ -188,7 +190,7 @@ class GameScene extends Phaser.Scene {
     }
     
     handlePause(paused) {
-        this.gameState.update('game.paused', paused);
+        this.gameInitializer.gameState.update('game.paused', paused);
         
         if (paused) {
             this.matter.world.pause();
@@ -198,38 +200,41 @@ class GameScene extends Phaser.Scene {
     }
     
     handleWaveComplete() {
-        const currentWave = this.gameState.get('waves.current');
+        const { gameState, combatSystem, waveSystem } = this.gameInitializer;
+        const currentWave = gameState.get('waves.current');
         
         // Let CombatSystem handle rewards
-        this.systems.combat.processWaveRewards(currentWave);
+        combatSystem.processWaveRewards(currentWave);
         
         // Start next wave after delay
         this.time.delayedCall(3000, () => {
-            this.systems.wave.startWave(currentWave + 1);
+            waveSystem.startWave(currentWave + 1);
         });
     }
     
     handleUICommand(command) {
+        const { eventBus, gameState } = this.gameInitializer;
+        
         const commands = {
             pause: () => {
-                const paused = !this.gameState.get('game.paused');
-                this.eventBus.emit(window.GameEvents.GAME_PAUSE, { paused });
+                const paused = !gameState.get('game.paused');
+                eventBus.emit('GAME_PAUSE', { paused });
             },
             restart: () => {
                 this.scene.restart();
             },
             menu: () => {
-                AudioManager.stopMusic();
+                eventBus.emit('AUDIO_STOP_MUSIC');
                 this.scene.start('Menu');
             },
             upgrade: () => {
-                this.eventBus.emit(window.GameEvents.UPGRADE_REQUEST, {
+                eventBus.emit('UPGRADE_REQUEST', {
                     upgradeType: command.upgradeType
                 });
             },
             sound: () => {
                 this.sound.mute = !command.value;
-                AudioManager.setMute(!command.value);
+                eventBus.emit('AUDIO_SET_MUTE', { muted: !command.value });
             }
         };
         
@@ -239,35 +244,37 @@ class GameScene extends Phaser.Scene {
     }
     
     startUIUpdates() {
+        const { gameState, abilitySystem } = this.gameInitializer;
+        
         // Update UI periodically
         this.time.addEvent({
             delay: 100,
             repeat: -1,
             callback: () => {
-                if (!this.gameState.get('game.paused')) {
+                if (!gameState.get('game.paused')) {
                     const state = {
                         player: {
-                            health: this.gameState.get('player.health'),
-                            maxHealth: this.gameState.get('player.maxHealth'),
-                            energy: this.gameState.get('player.energy'),
-                            maxEnergy: this.gameState.get('player.maxEnergy'),
-                            alive: this.gameState.get('player.alive')
+                            health: gameState.get('player.health'),
+                            maxHealth: gameState.get('player.maxHealth'),
+                            energy: gameState.get('player.energy'),
+                            maxEnergy: gameState.get('player.maxEnergy'),
+                            alive: gameState.get('player.alive')
                         },
                         game: {
-                            credits: this.gameState.get('game.credits'),
-                            score: this.gameState.get('game.score'),
-                            combo: this.gameState.get('game.combo'),
-                            comboTimer: this.gameState.get('game.comboTimer'),
-                            paused: this.gameState.get('game.paused'),
-                            gameOver: this.gameState.get('game.gameOver')
+                            credits: gameState.get('game.credits'),
+                            score: gameState.get('game.score'),
+                            combo: gameState.get('game.combo'),
+                            comboTimer: gameState.get('game.comboTimer'),
+                            paused: gameState.get('game.paused'),
+                            gameOver: gameState.get('game.gameOver')
                         },
                         mission: {
-                            currentWave: this.gameState.get('waves.current'),
-                            waveInProgress: this.gameState.get('waves.waveInProgress'),
-                            enemiesDefeated: this.gameState.get('waves.totalEnemies') - this.gameState.get('waves.enemiesRemaining'),
-                            totalEnemies: this.gameState.get('waves.totalEnemies')
+                            currentWave: gameState.get('waves.current'),
+                            waveInProgress: gameState.get('waves.waveInProgress'),
+                            enemiesDefeated: gameState.get('waves.totalEnemies') - gameState.get('waves.enemiesRemaining'),
+                            totalEnemies: gameState.get('waves.totalEnemies')
                         },
-                        upgrades: this.systems.ability.getAllUpgradeInfo()
+                        upgrades: abilitySystem.getAllUpgradeInfo()
                     };
                     
                     window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
@@ -281,23 +288,16 @@ class GameScene extends Phaser.Scene {
         window.removeEventListener('gameCommand', this.handleUICommand);
         
         // Stop music
-        AudioManager.stopMusic();
-        
-        // Clean up entities
-        this.entityManager.clear();
+        this.gameInitializer.eventBus.emit('AUDIO_STOP_MUSIC');
         
         // Clear collections
         this.sprites.clear();
         this.trails.clear();
         
-        // Let systems clean up their own resources
-        Object.values(this.systems).forEach(system => {
-            if (system.destroy) {
-                system.destroy();
-            }
-        });
+        // Destroy game initializer (which will clean up all systems)
+        this.gameInitializer.destroy();
         
-        // Clear UIManager messages
-        window.UIManager.destroy();
+        // Clear UI messages
+        this.gameInitializer.uiManager.destroy();
     }
 }

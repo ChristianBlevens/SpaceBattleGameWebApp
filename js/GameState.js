@@ -1,12 +1,14 @@
 // GameState.js - Centralized game state management
 
 class GameState {
-    constructor() {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
         this.state = this.getInitialState();
         this.previousState = null;
         this.stateHistory = [];
         this.maxHistory = 10;
         this.listeners = new Set();
+        this.playerId = null;
     }
     
     getInitialState() {
@@ -106,7 +108,7 @@ class GameState {
         });
         
         // Also emit to EventBus for game systems
-        window.EventBus.emit(window.GameEvents.UI_UPDATE, this.state);
+        this.eventBus.emit('UI_UPDATE', this.state);
     }
     
     // Update state with immutability
@@ -295,7 +297,7 @@ class GameState {
         if (newHealth <= 0) {
             this.update('player.alive', false);
             this.update('game.gameOver', true);
-            window.EventBus.emit(window.GameEvents.PLAYER_DEATH);
+            this.eventBus.emit('PLAYER_DEATH');
         }
         
         return actualDamage;
@@ -329,10 +331,20 @@ class GameState {
             this.update('player.energy', newEnergy);
         }
     }
+    
+    // Helper methods for managing player ID
+    setPlayerId(id) {
+        this.playerId = id;
+    }
+    
+    getPlayerId() {
+        return this.playerId;
+    }
+    
+    // Simplified state setters/getters
+    set(key, value) {
+        this.update(key, value);
+    }
 }
 
-// Create singleton instance
-const gameState = new GameState();
-
-// Export for use in other modules
-window.GameState = gameState;
+// GameState will be instantiated by GameInitializer

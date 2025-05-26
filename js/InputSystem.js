@@ -1,10 +1,12 @@
 // InputSystem.js - Handles all player input
 
 class InputSystem {
-    constructor(scene) {
+    constructor(scene, eventBus, entityManager, gameState) {
         this.scene = scene;
-        this.entityManager = window.EntityManager;
-        this.gameState = window.GameState;
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.gameState = gameState;
+        this.playerId = null;
         
         // Input states
         this.keys = null;
@@ -18,6 +20,9 @@ class InputSystem {
     }
     
     init() {
+        // Get player ID
+        this.playerId = this.gameState.getPlayerId();
+        
         this.setupKeyboard();
         this.setupMouse();
         
@@ -45,25 +50,25 @@ class InputSystem {
         this.keys.pause.on('down', () => {
             const paused = !this.gameState.get('game.paused');
             this.gameState.update('game.paused', paused);
-            window.EventBus.emit(window.GameEvents.GAME_PAUSE, { paused });
+            this.eventBus.emit('GAME_PAUSE', { paused });
         });
         
         // Debug toggle
         this.keys.debug.on('down', () => {
-            window.EventBus.emit('debug:toggle');
+            this.eventBus.emit('debug:toggle');
         });
         
         // Ability shortcuts
         this.keys.ability1.on('down', () => {
-            window.EventBus.emit(window.GameEvents.PLAYER_ABILITY, { ability: 'boost' });
+            this.eventBus.emit('PLAYER_ABILITY', { ability: 'boost' });
         });
         
         this.keys.ability2.on('down', () => {
-            window.EventBus.emit(window.GameEvents.PLAYER_ABILITY, { ability: 'shield' });
+            this.eventBus.emit('PLAYER_ABILITY', { ability: 'shield' });
         });
         
         this.keys.ability3.on('down', () => {
-            window.EventBus.emit(window.GameEvents.PLAYER_ABILITY, { ability: 'blast' });
+            this.eventBus.emit('PLAYER_ABILITY', { ability: 'blast' });
         });
     }
     
@@ -194,7 +199,7 @@ class InputSystem {
     }
     
     updateAim() {
-        const playerSprite = this.scene.sprites.get(this.scene.player);
+        const playerSprite = this.scene.sprites.get(this.playerId);
         if (!playerSprite) return;
         
         // Get world position of pointer
@@ -213,7 +218,7 @@ class InputSystem {
     }
     
     updateShooting(deltaTime) {
-        const weapon = this.entityManager.getComponent(this.scene.player, 'weapon');
+        const weapon = this.entityManager.getComponent(this.playerId, 'weapon');
         if (!weapon) return;
         
         if (this.isShooting) {
@@ -226,13 +231,13 @@ class InputSystem {
             UIManager.showChargeIndicator(chargePercent);
             
             // Emit charging event
-            window.EventBus.emit(window.GameEvents.PLAYER_SHOOT, {
+            this.eventBus.emit('PLAYER_SHOOT', {
                 charging: true,
                 chargePercent: chargePercent
             });
         } else if (weapon.charging) {
             // Fire weapon
-            window.EventBus.emit(window.GameEvents.PLAYER_SHOOT, {
+            this.eventBus.emit('PLAYER_SHOOT', {
                 charging: false,
                 angle: this.aimAngle,
                 chargeTime: weapon.chargeTime
@@ -248,7 +253,7 @@ class InputSystem {
     applyPlayerMovement() {
         if (this.moveVector.x === 0 && this.moveVector.y === 0) return;
         
-        const playerSprite = this.scene.sprites.get(this.scene.player);
+        const playerSprite = this.scene.sprites.get(this.playerId);
         if (!playerSprite) return;
         
         const stats = this.gameState.get('player.stats');
@@ -283,5 +288,4 @@ class InputSystem {
     }
 }
 
-// Export for use
-window.InputSystem = InputSystem;
+// InputSystem will be instantiated by GameInitializer

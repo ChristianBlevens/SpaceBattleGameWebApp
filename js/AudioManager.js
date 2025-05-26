@@ -1,13 +1,17 @@
 // AudioManager.js - Handles all game audio
 
-class AudioManagerClass {
-    constructor() {
+class AudioManager {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
         this.sounds = {};
         this.music = null;
         this.initialized = false;
         this.muted = false;
         this.musicVolume = 0.3;
         this.effectsVolume = 0.5;
+        
+        // Initialize on construction
+        this.init();
     }
     
     init() {
@@ -15,16 +19,28 @@ class AudioManagerClass {
         this.initializeSounds();
         
         // Listen for audio events
-        window.EventBus.on(window.GameEvents.AUDIO_PLAY, (data) => {
-            this.play(data.sound, data.volume);
+        this.eventBus.on('AUDIO_PLAY', (data) => {
+            this.play(data.sound, data.options);
         });
         
-        window.EventBus.on(window.GameEvents.AUDIO_STOP, (data) => {
+        this.eventBus.on('AUDIO_STOP', (data) => {
             this.stop(data.sound);
         });
         
-        window.EventBus.on(window.GameEvents.AUDIO_VOLUME, (data) => {
+        this.eventBus.on('AUDIO_VOLUME', (data) => {
             this.setVolume(data.type, data.volume);
+        });
+        
+        this.eventBus.on('AUDIO_PLAY_MUSIC', (data) => {
+            this.playMusic(data.track);
+        });
+        
+        this.eventBus.on('AUDIO_STOP_MUSIC', () => {
+            this.stopMusic();
+        });
+        
+        this.eventBus.on('AUDIO_SET_MUTE', (data) => {
+            this.setMute(data.muted);
         });
         
         this.initialized = true;
@@ -44,8 +60,10 @@ class AudioManagerClass {
         };
     }
     
-    play(soundName, volume = 1.0) {
+    play(soundName, options = {}) {
         if (!this.initialized || this.muted) return;
+        
+        const volume = options.volume || 1.0;
         
         // Log sound play
         console.log(`[AudioManager] Playing sound: ${soundName}`);
@@ -65,14 +83,15 @@ class AudioManagerClass {
         console.log(`[AudioManager] Sound: ${JSON.stringify(soundDef)} at volume ${volume}`);
     }
     
-    playMusic() {
+    playMusic(track) {
         if (!this.initialized || this.muted) return;
         
-        console.log('[AudioManager] Playing background music');
+        console.log(`[AudioManager] Playing background music: ${track || 'default'}`);
         // Placeholder for music playback
         this.music = {
             playing: true,
-            volume: this.musicVolume
+            volume: this.musicVolume,
+            track: track || 'default'
         };
     }
     
@@ -115,16 +134,12 @@ class AudioManagerClass {
     isMusicPlaying() {
         return this.music && this.music.playing;
     }
+    
+    // Cleanup method
+    destroy() {
+        this.stopMusic();
+        this.initialized = false;
+    }
 }
 
-// Create singleton instance
-window.AudioManager = new AudioManagerClass();
-
-// Initialize on load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.AudioManager.init();
-    });
-} else {
-    window.AudioManager.init();
-}
+// AudioManager will be instantiated by GameInitializer

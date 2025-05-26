@@ -2,8 +2,10 @@
 // REFACTORED: Added centralized collision detection, removed direct sprite manipulation
 
 class PhysicsSystem {
-    constructor(scene) {
+    constructor(scene, eventBus) {
         this.scene = scene;
+        this.eventBus = eventBus;
+        this.playerId = null;
         this.gravityConstant = GameConfig.physics.gravity;
         this.spiralForce = GameConfig.physics.spiralForce;
         this.damping = GameConfig.physics.damping;
@@ -20,8 +22,18 @@ class PhysicsSystem {
     init(entityManager) {
         this.entityManager = entityManager;
         
+        // Listen for player ID updates
+        this.eventBus.on('PLAYER_RESULT', (data) => {
+            if (data.player && data.playerId) {
+                this.playerId = data.playerId;
+            }
+        });
+        
+        // Request player ID
+        this.eventBus.emit('GET_PLAYER', { requestId: 'physics_player' });
+        
         // Listen for force application requests
-        window.EventBus.on(window.GameEvents.FORCE_APPLIED, (data) => {
+        this.eventBus.on('FORCE_APPLIED', (data) => {
             if (!this.pendingForces.has(data.entityId)) {
                 this.pendingForces.set(data.entityId, { x: 0, y: 0 });
             }
@@ -31,12 +43,12 @@ class PhysicsSystem {
         });
         
         // Listen for explosion force requests
-        window.EventBus.on(window.GameEvents.CREATE_EXPLOSION_FORCE, (data) => {
+        this.eventBus.on('CREATE_EXPLOSION_FORCE', (data) => {
             this.createExplosionForce(data.x, data.y, data.force, data.radius);
         });
         
         // Listen for titan shockwaves
-        window.EventBus.on(window.GameEvents.TITAN_SHOCKWAVE, (data) => {
+        this.eventBus.on('TITAN_SHOCKWAVE', (data) => {
             this.createExplosionForce(data.x, data.y, 10, 200);
         });
     }
@@ -241,7 +253,7 @@ class PhysicsSystem {
                 if (!targetSprite || !targetSprite.active) return;
                 
                 if (this.checkCollision(projectileSprite, targetSprite)) {
-                    window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
+                    this.eventBus.emit('COLLISION_DETECTED', {
                         entityA: projectileId,
                         entityB: targetId,
                         type: 'projectile'
@@ -252,7 +264,7 @@ class PhysicsSystem {
         
         // Powerup collisions with player
         const powerups = entityManager.getEntitiesByType('powerup');
-        const playerSprite = this.scene.sprites.get(this.scene.player);
+        const playerSprite = this.scene.sprites.get(this.playerId);
         
         if (playerSprite && playerSprite.active) {
             powerups.forEach(powerupId => {
@@ -260,8 +272,8 @@ class PhysicsSystem {
                 
                 if (powerupSprite && powerupSprite.active) {
                     if (this.checkCollision(playerSprite, powerupSprite)) {
-                        window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
-                            entityA: this.scene.player,
+                        this.eventBus.emit('COLLISION_DETECTED', {
+                            entityA: this.playerId,
                             entityB: powerupId,
                             type: 'powerup'
                         });
@@ -292,7 +304,7 @@ class PhysicsSystem {
                 if (!spriteB || !spriteB.active) continue;
                 
                 if (this.checkCollision(spriteA, spriteB)) {
-                    window.EventBus.emit(window.GameEvents.COLLISION_DETECTED, {
+                    this.eventBus.emit('COLLISION_DETECTED', {
                         entityA: entityA,
                         entityB: entityB,
                         type: 'physics'
@@ -349,7 +361,7 @@ class PhysicsSystem {
                 transform.y = newY;
                 
                 // Emit boundary wrap event
-                window.EventBus.emit(window.GameEvents.BOUNDARY_WRAP, {
+                this.eventBus.emit('BOUNDARY_WRAP', {
                     entityId: entityId,
                     position: { x: newX, y: newY }
                 });

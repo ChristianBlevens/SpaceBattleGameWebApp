@@ -2,14 +2,12 @@
 // REFACTORED: Now fully event-driven with no direct system references
 
 class AbilitySystem {
-    constructor(scene) {
+    constructor(scene, eventBus, entityManager, gameState) {
         this.scene = scene;
-        this.entityManager = null;
-        this.gameState = null;
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.gameState = gameState;
         this.playerId = null;
-        
-        // Request managers through events
-        this.requestManagers();
         
         // Ability configurations
         this.abilities = {
@@ -88,29 +86,6 @@ class AbilitySystem {
         this.pendingRequests = new Map();
     }
     
-    requestManagers() {
-        // Request entity manager
-        const emRequestId = `ability_em_${Date.now()}`;
-        this.pendingRequests.set(emRequestId, (manager) => {
-            this.entityManager = manager;
-        });
-        window.EventBus.emit(window.GameEvents.GET_ENTITY_MANAGER, { requestId: emRequestId });
-        
-        // Request game state
-        const gsRequestId = `ability_gs_${Date.now()}`;
-        this.pendingRequests.set(gsRequestId, (manager) => {
-            this.gameState = manager;
-        });
-        window.EventBus.emit(window.GameEvents.GET_GAME_STATE, { requestId: gsRequestId });
-        
-        // Listen for manager responses
-        window.EventBus.on(window.GameEvents.MANAGER_RESPONSE, (data) => {
-            if (this.pendingRequests.has(data.requestId)) {
-                this.pendingRequests.get(data.requestId)(data.manager);
-                this.pendingRequests.delete(data.requestId);
-            }
-        });
-    }
     
     init() {
         // Initialize ability cooldowns
@@ -118,76 +93,45 @@ class AbilitySystem {
             this.cooldowns.set(abilityKey, 0);
         });
         
-        // Get player ID
-        window.EventBus.on(window.GameEvents.PLAYER_ID_RESPONSE, (data) => {
-            this.playerId = data.playerId;
-        });
-        
-        // Request player ID
-        window.EventBus.emit(window.GameEvents.GET_PLAYER_ID);
+        // Get player ID from game state
+        this.playerId = this.gameState.getPlayerId();
         
         // Listen for ability activation requests
-        window.EventBus.on(window.GameEvents.PLAYER_ABILITY, (data) => {
+        this.eventBus.on('PLAYER_ABILITY', (data) => {
             this.activateAbility(data.ability);
         });
         
         // Listen for upgrade requests
-        window.EventBus.on(window.GameEvents.UPGRADE_REQUEST, (data) => {
+        this.eventBus.on('UPGRADE_REQUEST', (data) => {
             this.handleUpgrade(data.upgradeType);
         });
         
         // Listen for UI queries about upgrade costs
-        window.EventBus.on(window.GameEvents.QUERY_UPGRADE_COST, (data) => {
+        this.eventBus.on('QUERY_UPGRADE_COST', (data) => {
             this.sendUpgradeInfo(data.upgradeType);
         });
         
         // Listen for titan shockwave events
-        window.EventBus.on(window.GameEvents.TITAN_SHOCKWAVE, (data) => {
+        this.eventBus.on('TITAN_SHOCKWAVE', (data) => {
             // Request visual shockwave effect through event
-            window.EventBus.emit(window.GameEvents.CREATE_SHOCKWAVE_EFFECT, {
+            this.eventBus.emit('CREATE_SHOCKWAVE_EFFECT', {
                 x: data.x,
                 y: data.y,
                 color: 0xff9966
             });
             // Physics system will handle the explosion force
-            window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'explosion' });
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'explosion' });
         });
-        
-        // Listen for state responses
-        window.EventBus.on(window.GameEvents.STATE_RESPONSE, (data) => {
-            this.handleStateResponse(data);
-        });
-        
-        // Listen for component responses
-        window.EventBus.on('entity:get_component_result', (data) => {
-            this.handleComponentResponse(data);
-        });
-    }
-    
-    handleStateResponse(data) {
-        if (this.pendingRequests.has(data.requestId)) {
-            this.pendingRequests.get(data.requestId)(data.value);
-            this.pendingRequests.delete(data.requestId);
-        }
-    }
-    
-    handleComponentResponse(data) {
-        if (this.pendingRequests.has(data.requestId)) {
-            this.pendingRequests.get(data.requestId)(data.component);
-            this.pendingRequests.delete(data.requestId);
-        }
     }
     
     getStateValue(path, callback) {
-        const requestId = `ability_state_${Date.now()}_${Math.random()}`;
-        this.pendingRequests.set(requestId, callback);
-        window.EventBus.emit(window.GameEvents.STATE_GET, { path, requestId });
+        const value = this.gameState.get(path);
+        callback(value);
     }
     
     getComponent(entityId, componentType, callback) {
-        const requestId = `ability_comp_${Date.now()}_${Math.random()}`;
-        this.pendingRequests.set(requestId, callback);
-        window.EventBus.emit('entity:get_component', { entityId, componentType, requestId });
+        const component = this.entityManager.getComponent(entityId, componentType);
+        callback(component);
     }
     
     update(deltaTime) {
@@ -248,13 +192,13 @@ class AbilitySystem {
                 const cooldown = this.cooldowns.get(abilityKey);
                 
                 if (cooldown > 0) {
-                    window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
+                    this.eventBus.emit('UI_NOTIFICATION', {
                         message: `${ability.name} on cooldown (${Math.ceil(cooldown / 1000)}s)`,
                         type: 'warning',
                         icon: 'fa-clock'
                     });
                 } else {
-                    window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
+                    this.eventBus.emit('UI_NOTIFICATION', {
                         message: 'Not enough energy!',
                         type: 'warning',
                         icon: 'fa-battery-empty'
@@ -267,7 +211,7 @@ class AbilitySystem {
             
             // Consume energy
             this.getStateValue('player.energy', (currentEnergy) => {
-                window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                this.eventBus.emit('STATE_UPDATE', {
                     path: 'player.energy',
                     value: currentEnergy - ability.energyCost
                 });
@@ -280,7 +224,7 @@ class AbilitySystem {
             ability.execute();
             
             // Notification
-            window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
+            this.eventBus.emit('UI_NOTIFICATION', {
                 message: `${ability.name} activated!`,
                 type: 'success',
                 icon: ability.icon
@@ -296,13 +240,13 @@ class AbilitySystem {
             
             // Double speed
             stats.speed *= 2;
-            window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+            this.eventBus.emit('STATE_UPDATE', {
                 path: 'player.stats',
                 value: stats
             });
             
             // Request visual effects
-            window.EventBus.emit(window.GameEvents.PLAYER_BOOST_ACTIVATED, {
+            this.eventBus.emit('PLAYER_BOOST_ACTIVATED', {
                 entityId: this.playerId,
                 duration: this.abilities.boost.duration
             });
@@ -316,20 +260,20 @@ class AbilitySystem {
                     // Restore original speed
                     this.getStateValue('player.stats', (currentStats) => {
                         currentStats.speed = originalSpeed;
-                        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                        this.eventBus.emit('STATE_UPDATE', {
                             path: 'player.stats',
                             value: currentStats
                         });
                     });
                     
                     // Clear visual effects
-                    window.EventBus.emit(window.GameEvents.PLAYER_BOOST_DEACTIVATED, {
+                    this.eventBus.emit('PLAYER_BOOST_DEACTIVATED', {
                         entityId: this.playerId
                     });
                 }
             });
             
-            window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'powerup' });
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
         });
     }
     
@@ -351,7 +295,7 @@ class AbilitySystem {
             });
             
             // Request shield visual
-            window.EventBus.emit(window.GameEvents.PLAYER_SHIELD_ACTIVATED, {
+            this.eventBus.emit('PLAYER_SHIELD_ACTIVATED', {
                 entityId: this.playerId,
                 duration: this.abilities.shield.duration
             });
@@ -375,13 +319,13 @@ class AbilitySystem {
                     });
                     
                     // Remove shield visual
-                    window.EventBus.emit(window.GameEvents.PLAYER_SHIELD_DEACTIVATED, {
+                    this.eventBus.emit('PLAYER_SHIELD_DEACTIVATED', {
                         entityId: this.playerId
                     });
                 }
             });
             
-            window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'powerup' });
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
         });
     }
     
@@ -395,7 +339,7 @@ class AbilitySystem {
             const baseDamage = 100;
             
             // Request visual effect
-            window.EventBus.emit(window.GameEvents.PLAYER_NOVA_BLAST, {
+            this.eventBus.emit('PLAYER_NOVA_BLAST', {
                 x: transform.x,
                 y: transform.y
             });
@@ -417,7 +361,7 @@ class AbilitySystem {
                             const damage = baseDamage * (1 - dist / blastRadius);
                             
                             // Emit damage event
-                            window.EventBus.emit(window.GameEvents.PROJECTILE_HIT, {
+                            this.eventBus.emit('PROJECTILE_HIT', {
                                 targetId: enemyId,
                                 damage: damage,
                                 projectileId: null // No projectile for blast damage
@@ -433,7 +377,7 @@ class AbilitySystem {
             });
             
             // Request physics explosion
-            window.EventBus.emit(window.GameEvents.CREATE_EXPLOSION_FORCE, {
+            this.eventBus.emit('CREATE_EXPLOSION_FORCE', {
                 x: transform.x,
                 y: transform.y,
                 force: 20,
@@ -441,17 +385,17 @@ class AbilitySystem {
             });
             
             // Screen effects
-            window.EventBus.emit(window.GameEvents.CAMERA_SHAKE, {
+            this.eventBus.emit('CAMERA_SHAKE', {
                 duration: 500,
                 intensity: 0.02
             });
             
-            window.EventBus.emit(window.GameEvents.CAMERA_FLASH, {
+            this.eventBus.emit('CAMERA_FLASH', {
                 duration: 200,
                 color: { r: 255, g: 0, b: 255 }
             });
             
-            window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'explosion' });
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'explosion' });
         });
     }
     
@@ -497,12 +441,12 @@ class AbilitySystem {
                 
                 if (credits < cost) {
                     // Not enough credits
-                    window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
+                    this.eventBus.emit('UI_NOTIFICATION', {
                         message: 'Not enough credits!',
                         type: 'error',
                         icon: 'fa-coins'
                     });
-                    window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'error' });
+                    this.eventBus.emit('AUDIO_PLAY', { sound: 'error' });
                     return;
                 }
                 
@@ -510,23 +454,23 @@ class AbilitySystem {
                 this.applyUpgrade(upgradeType, config, currentLevel);
                 
                 // Deduct credits
-                window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                this.eventBus.emit('STATE_UPDATE', {
                     path: 'game.credits',
                     value: credits - cost
                 });
                 
                 // Update upgrade level
                 upgrades[upgradeType] = currentLevel + 1;
-                window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                this.eventBus.emit('STATE_UPDATE', {
                     path: 'player.upgrades',
                     value: upgrades
                 });
                 
                 // Play sound
-                window.EventBus.emit(window.GameEvents.AUDIO_PLAY, { sound: 'powerup' });
+                this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
                 
                 // Emit success event
-                window.EventBus.emit(window.GameEvents.UPGRADE_APPLIED, {
+                this.eventBus.emit('UPGRADE_APPLIED', {
                     upgradeType: upgradeType,
                     newLevel: currentLevel + 1,
                     cost: cost,
@@ -534,7 +478,7 @@ class AbilitySystem {
                 });
                 
                 // UI notification
-                window.EventBus.emit(window.GameEvents.UI_NOTIFICATION, {
+                this.eventBus.emit('UI_NOTIFICATION', {
                     message: `${config.description} upgraded to level ${currentLevel + 1}!`,
                     type: 'success',
                     icon: 'fa-arrow-up'
@@ -551,7 +495,7 @@ class AbilitySystem {
                 // Update player stats
                 this.getStateValue('player.stats', (stats) => {
                     stats[config.stat] += config.increase;
-                    window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                    this.eventBus.emit('STATE_UPDATE', {
                         path: 'player.stats',
                         value: stats
                     });
@@ -577,12 +521,12 @@ class AbilitySystem {
                     this.getStateValue('player.energy', (currentEnergy) => {
                         const newMaxEnergy = currentMaxEnergy + config.increase;
                         
-                        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                        this.eventBus.emit('STATE_UPDATE', {
                             path: 'player.maxEnergy',
                             value: newMaxEnergy
                         });
                         
-                        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                        this.eventBus.emit('STATE_UPDATE', {
                             path: 'player.energy',
                             value: currentEnergy + config.increase
                         });
@@ -595,12 +539,12 @@ class AbilitySystem {
                     this.getStateValue('player.health', (currentHealth) => {
                         const newMaxHealth = currentMaxHealth + config.increase;
                         
-                        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                        this.eventBus.emit('STATE_UPDATE', {
                             path: 'player.maxHealth',
                             value: newMaxHealth
                         });
                         
-                        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+                        this.eventBus.emit('STATE_UPDATE', {
                             path: 'player.health',
                             value: Math.min(newMaxHealth, currentHealth + config.increase)
                         });
@@ -666,7 +610,7 @@ class AbilitySystem {
             this.getStateValue('game.credits', (credits) => {
                 const canAfford = credits >= cost;
                 
-                window.EventBus.emit(window.GameEvents.UPGRADE_INFO_RESPONSE, {
+                this.eventBus.emit('UPGRADE_INFO_RESPONSE', {
                     upgradeType: upgradeType,
                     currentLevel: currentLevel,
                     cost: cost,
@@ -721,7 +665,7 @@ class AbilitySystem {
             health: 0
         };
         
-        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+        this.eventBus.emit('STATE_UPDATE', {
             path: 'player.upgrades',
             value: upgrades
         });
@@ -735,17 +679,17 @@ class AbilitySystem {
             energyRegen: GameConfig.player.energyRegen
         };
         
-        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+        this.eventBus.emit('STATE_UPDATE', {
             path: 'player.stats',
             value: baseStats
         });
         
-        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+        this.eventBus.emit('STATE_UPDATE', {
             path: 'player.maxHealth',
             value: GameConfig.player.initialHealth
         });
         
-        window.EventBus.emit(window.GameEvents.STATE_UPDATE, {
+        this.eventBus.emit('STATE_UPDATE', {
             path: 'player.maxEnergy',
             value: GameConfig.player.initialEnergy
         });

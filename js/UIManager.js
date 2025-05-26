@@ -2,7 +2,9 @@
 // REFACTORED: Removed all Phaser scene manipulation, now pure HTML UI management
 
 class UIManager {
-    constructor() {
+    constructor(eventBus, gameState) {
+        this.eventBus = eventBus;
+        this.gameState = gameState;
         this.eventQueue = [];
         this.notificationId = 0;
         
@@ -20,27 +22,27 @@ class UIManager {
     
     setupEventListeners() {
         // Game events that affect UI
-        window.EventBus.on(window.GameEvents.PLAYER_DAMAGED, (data) => {
+        this.eventBus.on('PLAYER_DAMAGED', (data) => {
             this.showDamageIndicator();
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_HEAL, (data) => {
+        this.eventBus.on('PLAYER_HEAL', (data) => {
             this.showHealEffect();
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_KILLED, (data) => {
+        this.eventBus.on('ENEMY_KILLED', (data) => {
             this.showKillNotification(data);
         });
         
-        window.EventBus.on(window.GameEvents.COMBO_INCREASE, (data) => {
+        this.eventBus.on('COMBO_INCREASE', (data) => {
             this.showComboNotification(data.combo);
         });
         
-        window.EventBus.on(window.GameEvents.COMBO_BREAK, () => {
+        this.eventBus.on('COMBO_BREAK', () => {
             // Just update UI state, RenderSystem handles the in-game display
         });
         
-        window.EventBus.on(window.GameEvents.WAVE_START, (data) => {
+        this.eventBus.on('WAVE_START', (data) => {
             this.updateMission({
                 name: `Wave ${data.wave}`,
                 objectives: [
@@ -57,23 +59,23 @@ class UIManager {
             });
         });
         
-        window.EventBus.on(window.GameEvents.POWERUP_COLLECTED, (data) => {
+        this.eventBus.on('POWERUP_COLLECTED', (data) => {
             this.showPickupNotification(data);
         });
         
-        window.EventBus.on(window.GameEvents.UI_NOTIFICATION, (data) => {
+        this.eventBus.on('UI_NOTIFICATION', (data) => {
             this.showNotification(data.message, data.type, data.icon);
         });
         
-        window.EventBus.on(window.GameEvents.PLAYER_CHARGE_UPDATE, (data) => {
+        this.eventBus.on('PLAYER_CHARGE_UPDATE', (data) => {
             this.updateChargeIndicator(data.percent);
         });
         
-        window.EventBus.on(window.GameEvents.UPGRADE_APPLIED, (data) => {
+        this.eventBus.on('UPGRADE_APPLIED', (data) => {
             this.updateUpgradeDisplay(data);
         });
         
-        window.EventBus.on(window.GameEvents.WAVE_REWARDS, (data) => {
+        this.eventBus.on('WAVE_REWARDS', (data) => {
             this.showNotification(
                 `Wave ${data.waveNumber} Complete! +${data.points} points, +${data.credits} credits`,
                 'success',
@@ -81,8 +83,17 @@ class UIManager {
             );
         });
         
-        window.EventBus.on(window.GameEvents.GAME_OVER, (data) => {
+        this.eventBus.on('GAME_OVER', (data) => {
             this.showGameOverUI(data.victory);
+        });
+        
+        // Listen for UI update events from GameState
+        this.eventBus.on('UI_UPDATE', (state) => {
+            this.update(state);
+        });
+        
+        this.eventBus.on('UI_SHOW_MESSAGE', (data) => {
+            this.showMessage(data.message, data.type, data.duration);
         });
     }
     
@@ -257,10 +268,27 @@ class UIManager {
     showGameOverUI(victory) {
         this.queueEvent('gameOver', {
             victory: victory,
-            finalScore: window.GameState.get('game.score'),
-            wavesCompleted: window.GameState.get('waves.current') - 1,
-            totalKills: window.GameState.get('game.totalKills')
+            finalScore: this.gameState.get('game.score'),
+            wavesCompleted: this.gameState.get('waves.current') - 1,
+            totalKills: this.gameState.get('game.totalKills')
         });
+    }
+    
+    update(state) {
+        // Update UI elements based on state
+        if (state.player) {
+            UIManager.updateHealthBar(state.player.health, state.player.maxHealth);
+            UIManager.updateEnergyBar(state.player.energy, state.player.maxEnergy);
+        }
+    }
+    
+    showMessage(message, type, duration = 3000) {
+        this.showNotification(message, type || 'info', 'fa-info-circle');
+        if (duration > 0) {
+            setTimeout(() => {
+                this.queueEvent('dismissNotification', { id: this.notificationId - 1 });
+            }, duration);
+        }
     }
     
     // Static UI updates
@@ -294,8 +322,4 @@ class UIManager {
     }
 }
 
-// Initialize UI Manager
-const uiManager = new UIManager();
-
-// Export for use in other modules
-window.UIManager = uiManager;
+// UIManager will be instantiated by GameInitializer

@@ -2,47 +2,53 @@
 // REFACTORED: Removed collision detection and direct entity destruction
 
 class WeaponSystem {
-    constructor(scene) {
+    constructor(scene, eventBus, entityManager, entityFactory) {
         this.scene = scene;
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.entityFactory = entityFactory;
         this.projectiles = new Map();
-        this.entityFactory = null;
+        this.playerId = null;
     }
     
-    init(entityManager) {
-        this.entityManager = entityManager;
-        this.entityFactory = new EntityFactory(this.scene);
+    init() {
+        // Get player ID from event
+        this.eventBus.emit('REQUEST_PLAYER_ID');
+        this.eventBus.on('PLAYER_ID_RESPONSE', (data) => {
+            this.playerId = data.playerId;
+        });
         
         // Listen for shooting events
-        window.EventBus.on(window.GameEvents.PLAYER_SHOOT, (data) => {
+        this.eventBus.on('PLAYER_SHOOT', (data) => {
             if (!data.charging) {
                 this.handlePlayerShoot(data);
             }
         });
         
-        window.EventBus.on(window.GameEvents.ENEMY_SHOOT, (data) => {
+        this.eventBus.on('ENEMY_SHOOT', (data) => {
             this.handleEnemyShoot(data);
         });
         
         // Listen for projectile expiration
-        window.EventBus.on(window.GameEvents.PROJECTILE_EXPIRED, (data) => {
+        this.eventBus.on('PROJECTILE_EXPIRED', (data) => {
             this.projectiles.delete(data.projectileId);
-            window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+            this.eventBus.emit('DESTROY_ENTITY', {
                 entityId: data.projectileId
             });
         });
         
         // Listen for entity destruction to clean up projectiles
-        window.EventBus.on(window.GameEvents.ENTITY_DESTROYED, (data) => {
+        this.eventBus.on('ENTITY_DESTROYED', (data) => {
             this.projectiles.delete(data.id);
         });
     }
     
-    update(deltaTime, entityManager) {
+    update(deltaTime) {
         // Update all entities with weapons
-        const weaponEntities = entityManager.query('weapon', 'transform');
+        const weaponEntities = this.entityManager.query('weapon', 'transform');
         
         weaponEntities.forEach(entityId => {
-            const weapon = entityManager.getComponent(entityId, 'weapon');
+            const weapon = this.entityManager.getComponent(entityId, 'weapon');
             
             // Update charge time if charging
             if (weapon.charging) {
@@ -52,9 +58,9 @@ class WeaponSystem {
                 );
                 
                 // Emit charge update for UI
-                if (entityId === this.scene.player) {
+                if (entityId === this.playerId) {
                     const chargePercent = (weapon.chargeTime / weapon.maxChargeTime) * 100;
-                    window.EventBus.emit(window.GameEvents.PLAYER_CHARGE_UPDATE, {
+                    this.eventBus.emit('PLAYER_CHARGE_UPDATE', {
                         percent: chargePercent
                     });
                 }
@@ -67,14 +73,14 @@ class WeaponSystem {
         });
         
         // Update projectile lifetimes
-        const projectiles = entityManager.getEntitiesByType('projectile');
+        const projectiles = this.entityManager.getEntitiesByType('projectile');
         projectiles.forEach(projectileId => {
-            const lifetime = entityManager.getComponent(projectileId, 'lifetime');
+            const lifetime = this.entityManager.getComponent(projectileId, 'lifetime');
             if (lifetime) {
                 lifetime.elapsed += deltaTime * 1000;
                 
                 if (lifetime.elapsed >= lifetime.duration) {
-                    window.EventBus.emit(window.GameEvents.PROJECTILE_EXPIRED, {
+                    this.eventBus.emit('PROJECTILE_EXPIRED', {
                         projectileId: projectileId
                     });
                 }
@@ -83,10 +89,11 @@ class WeaponSystem {
     }
     
     handlePlayerShoot(data) {
-        const weapon = this.entityManager.getComponent(this.scene.player, 'weapon');
+        if (!this.playerId) return;
+        const weapon = this.entityManager.getComponent(this.playerId, 'weapon');
         if (!weapon || weapon.lastFireTime > 0) return;
         
-        this.fireWeapon(this.scene.player, data.angle);
+        this.fireWeapon(this.playerId, data.angle);
     }
     
     handleEnemyShoot(data) {
@@ -126,7 +133,7 @@ class WeaponSystem {
         
         // Apply recoil force
         const recoilForce = 0.5 * (1 + chargeLevel);
-        window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+        this.eventBus.emit('FORCE_APPLIED', {
             entityId: shooterId,
             force: {
                 x: -Math.cos(angle) * recoilForce,
@@ -139,7 +146,7 @@ class WeaponSystem {
         weapon.chargeTime = 0;
         
         // Emit projectile created event
-        window.EventBus.emit(window.GameEvents.PROJECTILE_CREATED, {
+        this.eventBus.emit('PROJECTILE_CREATED', {
             projectileId: projectileId,
             shooterId: shooterId,
             isCharged: isCharged,
@@ -147,11 +154,11 @@ class WeaponSystem {
         });
         
         // Play sound
-        AudioManager.play(isCharged ? 'explosion' : 'shoot');
+        this.eventBus.emit('AUDIO_PLAY', { sound: isCharged ? 'explosion' : 'shoot' });
         
         // Request camera shake for charged player shots
-        if (isCharged && shooterId === this.scene.player) {
-            window.EventBus.emit(window.GameEvents.CAMERA_SHAKE, {
+        if (isCharged && shooterId === this.playerId) {
+            this.eventBus.emit('CAMERA_SHAKE', {
                 duration: 200,
                 intensity: 0.01
             });
@@ -166,7 +173,7 @@ class WeaponSystem {
     
     clearAllProjectiles() {
         this.projectiles.forEach((value, projectileId) => {
-            window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+            this.eventBus.emit('DESTROY_ENTITY', {
                 entityId: projectileId
             });
         });

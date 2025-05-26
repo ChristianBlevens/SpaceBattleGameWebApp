@@ -6,15 +6,28 @@ class EventBus {
         this.events = new Map();
         this.eventQueue = [];
         this.processing = false;
+        this.debug = false; // Enable/disable console logging
+        this.eventHistory = []; // Track recent events for debugging
+        this.maxHistorySize = 100;
     }
     
     // Subscribe to an event
     on(event, callback, context = null) {
+        if (typeof event !== 'string') {
+            console.error('[EventBus] Event name must be a string');
+            return () => {};
+        }
+        
+        if (typeof callback !== 'function') {
+            console.error('[EventBus] Callback must be a function');
+            return () => {};
+        }
+        
         if (!this.events.has(event)) {
             this.events.set(event, []);
         }
         
-        const listener = { callback, context };
+        const listener = { callback, context, event };
         this.events.get(event).push(listener);
         
         // Return unsubscribe function
@@ -24,6 +37,9 @@ class EventBus {
                 const index = listeners.indexOf(listener);
                 if (index > -1) {
                     listeners.splice(index, 1);
+                    if (listeners.length === 0) {
+                        this.events.delete(event);
+                    }
                 }
             }
         };
@@ -31,22 +47,40 @@ class EventBus {
     
     // Subscribe to an event once
     once(event, callback, context = null) {
-        const unsubscribe = this.on(event, (...args) => {
+        const wrappedCallback = (...args) => {
             unsubscribe();
             callback.apply(context, args);
-        });
+        };
+        const unsubscribe = this.on(event, wrappedCallback, context);
         return unsubscribe;
     }
     
     // Emit an event immediately
     emit(event, ...args) {
-        // Log all events
-        console.log(`[EventBus] Event: ${event}`, args[0] || '');
+        if (typeof event !== 'string') {
+            console.error('[EventBus] Event name must be a string');
+            return;
+        }
+        
+        // Add to history for debugging (store first argument as data)
+        this.addToHistory(event, args[0]);
+        
+        // Log if debug is enabled
+        if (this.debug) {
+            console.log(`[EventBus] Event: ${event}`, ...args);
+        }
         
         const listeners = this.events.get(event);
-        if (listeners) {
-            listeners.forEach(listener => {
-                listener.callback.apply(listener.context, args);
+        if (listeners && listeners.length > 0) {
+            // Create a copy to avoid issues if listeners modify the array
+            const listenersCopy = [...listeners];
+            
+            listenersCopy.forEach(listener => {
+                try {
+                    listener.callback.apply(listener.context, args);
+                } catch (error) {
+                    console.error(`[EventBus] Error in listener for event '${event}':`, error);
+                }
             });
         }
     }
@@ -73,19 +107,75 @@ class EventBus {
     
     // Clear all listeners for an event
     off(event) {
-        this.events.delete(event);
+        if (typeof event === 'string') {
+            this.events.delete(event);
+        } else if (typeof event === 'function') {
+            // Remove specific callback from all events
+            this.events.forEach((listeners, eventName) => {
+                const filtered = listeners.filter(l => l.callback !== event);
+                if (filtered.length > 0) {
+                    this.events.set(eventName, filtered);
+                } else {
+                    this.events.delete(eventName);
+                }
+            });
+        }
     }
     
     // Clear all listeners
     clear() {
         this.events.clear();
         this.eventQueue = [];
+        this.eventHistory = [];
     }
     
     // Get listener count for debugging
     getListenerCount(event) {
-        const listeners = this.events.get(event);
-        return listeners ? listeners.length : 0;
+        if (event) {
+            const listeners = this.events.get(event);
+            return listeners ? listeners.length : 0;
+        } else {
+            // Return total listener count
+            let total = 0;
+            this.events.forEach(listeners => {
+                total += listeners.length;
+            });
+            return total;
+        }
+    }
+    
+    // Add event to history for debugging
+    addToHistory(event, data) {
+        this.eventHistory.push({
+            event,
+            data,
+            timestamp: Date.now()
+        });
+        
+        // Keep history size limited
+        if (this.eventHistory.length > this.maxHistorySize) {
+            this.eventHistory.shift();
+        }
+    }
+    
+    // Get recent event history for debugging
+    getHistory(count = 10) {
+        return this.eventHistory.slice(-count);
+    }
+    
+    // Enable/disable debug logging
+    setDebug(enabled) {
+        this.debug = enabled;
+    }
+    
+    // Get all registered events
+    getRegisteredEvents() {
+        return Array.from(this.events.keys());
+    }
+    
+    // Check if an event has listeners
+    hasListeners(event) {
+        return this.events.has(event) && this.events.get(event).length > 0;
     }
 }
 
@@ -111,7 +201,7 @@ const GameEvents = {
     PLAYER_SHIELD_ACTIVATED: 'player:shield_activated',
     PLAYER_SHIELD_DEACTIVATED: 'player:shield_deactivated',
     PLAYER_NOVA_BLAST: 'player:nova_blast',
-    GET_PLAYER_ID: 'get:player_id',
+    REQUEST_PLAYER_ID: 'request:player_id',
     PLAYER_ID_RESPONSE: 'player:id_response',
     
     // Enemy events
@@ -236,9 +326,12 @@ const GameEvents = {
     TEXTURES_CREATED: 'textures:created'
 };
 
-// Create singleton instance
-const eventBus = new EventBus();
+// Export classes for use by GameInitializer
+// EventBus will be instantiated by GameInitializer, not as a singleton
 
-// This is the ONLY export to window in the entire codebase
-window.EventBus = eventBus;
-window.GameEvents = GameEvents;
+// Optional: Create a default instance for debugging in console
+if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    window._debugEventBus = new EventBus();
+    window._debugEventBus.setDebug(true);
+    console.log('[EventBus] Debug instance available at window._debugEventBus');
+}

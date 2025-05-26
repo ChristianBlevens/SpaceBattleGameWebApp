@@ -2,8 +2,10 @@
 // REFACTORED: Removed direct system access, now fully event-driven
 
 class AISystem {
-    constructor(scene) {
+    constructor(scene, eventBus) {
         this.scene = scene;
+        this.eventBus = eventBus;
+        this.playerId = null;
         
         // Boids parameters for flocking behavior
         this.boidParams = {
@@ -16,17 +18,30 @@ class AISystem {
             maxTurnRate: 0.2
         };
         
-        // Faction behaviors
-        this.factionBehaviors = {
-            swarm: new SwarmBehavior(),
-            sentinel: new SentinelBehavior(),
-            phantom: new PhantomBehavior(),
-            titan: new TitanBehavior()
-        };
+        // Faction behaviors will be initialized after eventBus is available
+        this.factionBehaviors = {};
     }
     
     init(entityManager) {
         this.entityManager = entityManager;
+        
+        // Initialize faction behaviors with eventBus
+        this.factionBehaviors = {
+            swarm: new SwarmBehavior(this.eventBus),
+            sentinel: new SentinelBehavior(this.eventBus),
+            phantom: new PhantomBehavior(this.eventBus),
+            titan: new TitanBehavior(this.eventBus)
+        };
+        
+        // Listen for player ID updates
+        this.eventBus.on('PLAYER_RESULT', (data) => {
+            if (data.player && data.playerId) {
+                this.playerId = data.playerId;
+            }
+        });
+        
+        // Request player ID
+        this.eventBus.emit('GET_PLAYER', { requestId: 'ai_player' });
     }
     
     update(deltaTime, entityManager) {
@@ -67,10 +82,12 @@ class AISystem {
         const allies = [];
         
         // Check player
-        const playerTransform = this.entityManager.getComponent(this.scene.player, 'transform');
-        if (playerTransform) {
-            const dist = this.getDistance(myTransform, playerTransform);
-            enemies.push({ id: this.scene.player, distance: dist });
+        if (this.playerId) {
+            const playerTransform = this.entityManager.getComponent(this.playerId, 'transform');
+            if (playerTransform) {
+                const dist = this.getDistance(myTransform, playerTransform);
+                enemies.push({ id: this.playerId, distance: dist });
+            }
         }
         
         // Check other AI entities
@@ -241,7 +258,7 @@ class AISystem {
         forceY += boidForces.y;
         
         // Emit movement request instead of directly applying force
-        window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+        this.eventBus.emit('FORCE_APPLIED', {
             entityId: entityId,
             force: { x: forceX, y: forceY }
         });
@@ -321,7 +338,7 @@ class AISystem {
         const weapon = this.entityManager.getComponent(shooterId, 'weapon');
         if (!weapon || weapon.lastFireTime > 0) return;
         
-        window.EventBus.emit(window.GameEvents.ENEMY_SHOOT_REQUEST, {
+        this.eventBus.emit('ENEMY_SHOOT_REQUEST', {
             shooterId: shooterId,
             targetId: targetId,
             angle: this.calculateAngleToTarget(shooterId, targetId)
@@ -386,7 +403,7 @@ class SentinelBehavior {
             ai.state = 'returning';
             
             // Request movement force
-            window.EventBus.emit(window.GameEvents.FORCE_APPLIED, {
+            this.eventBus.emit('FORCE_APPLIED', {
                 entityId: entityId,
                 force: {
                     x: (dx / dist) * 0.01,
@@ -416,7 +433,7 @@ class PhantomBehavior {
             ai.memory.phased = !ai.memory.phased;
             
             // Emit phase change event
-            window.EventBus.emit(window.GameEvents.ENEMY_PHASE_CHANGE, {
+            this.eventBus.emit('ENEMY_PHASE_CHANGE', {
                 entityId: entityId,
                 phased: ai.memory.phased,
                 alpha: ai.memory.phased ? 0.3 : 1,
@@ -448,7 +465,7 @@ class TitanBehavior {
                     ai.memory.lastShockwave = Date.now();
                     
                     // Emit shockwave event
-                    window.EventBus.emit(window.GameEvents.TITAN_SHOCKWAVE, {
+                    this.eventBus.emit('TITAN_SHOCKWAVE', {
                         entityId: entityId,
                         x: transform.x,
                         y: transform.y

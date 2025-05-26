@@ -95,35 +95,62 @@ const GameConfig = {
     }
 };
 
-// Initialize Howler sounds
-const AudioManager = {
-    sounds: {},
-    music: null,
+// Phaser game configuration
+const phaserConfig = {
+    type: Phaser.WEBGL,
+    width: 1280,
+    height: 720,
+    backgroundColor: '#000033',
+    parent: 'game-container',
+    physics: {
+        default: 'matter',
+        matter: {
+            gravity: { x: 0, y: 0 },
+            debug: false
+        }
+    },
+    scene: [BootScene, MenuScene, GameScene],
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    render: {
+        antialias: true,
+        pixelArt: false,
+        roundPixels: false
+    },
+    audio: {
+        disableWebAudio: false
+    }
+};
+
+// Wait for DOM to be ready
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize the game
+    const game = new Phaser.Game(phaserConfig);
     
-    init() {
-        // Load sound effects
-        this.sounds.shoot = new Howl({
-            src: ['data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSl+z/PYiTEIHGvA7+CWTRARUqzn7bllGgg8leDuldMIHGvA79+VTQ0MVqnn7bllGQ0'],
-            volume: 0.3
-        });
-        
-        this.sounds.explosion = new Howl({
-            src: ['data:audio/wav;base64,UklGRjIHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQ4HAAB/f39/f39/f39/f39/f3+AfwB1qrWDVX6Tf3+Uh2V0kYl/dqR6YnqZhEyHpHFjqHVRm6FMaLeFNKe8N1fLgjvMsDnOxTXHyj3AxEfBvUzItEzOq0jQqEfMrEnHr0/AsVS+r1e9sFO6sFG0sVWtr1morVuXqmWLomJ1kYJrg3uNfoB+gIB/f4B/g3N6kXZxk35rf3+Df3+Ff3+CgH+Af4B/fn+Af3+Af4B/f39/f39/f39/f39/f39/f39/gH+Af39/f39/f39/f39/f3+Af39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f3+Af4B/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/'],
-            volume: 0.5
-        });
-        
-        this.sounds.powerup = new Howl({
-            src: ['data:audio/wav;base64,UklGRl4FAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToFAACAf4B/gH+Af4B/gH+Af4B/gH+Af4B/gICAf3+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4ODhYeIi4eLgH+Af4B/gH+Af3qDeYR5hHmEeYR5hHmEeYR5hHmEeYR5hHmEeYR5hHmEeYR5hHmEeYR5hHmEeYR5hHmEeYSAf4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/gH+Af4B/'],
-            volume: 0.4
-        });
-        
-        this.sounds.hit = new Howl({
-            src: ['data:audio/wav;base64,UklGRhwGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YfgFAACBj318eYKRhHl/jIR0hpiJcYCShXF9joNwg5OGcn+QiXZ7h4x8eoKFgnuCgoZ/f39/hoOAf3+Dgn5+goN+fYKEfnuBhH57gYV+e4GFfnuBiH94gYl/d4GLf3iAi393gIx/d3+Mf3eAjH92gIx/doCMf3aAjH92gIx/doCMf3eBi394gYp+eYGJfnqBiX57gYh+e4KHfnyChX59goR+foKCfn+Cgn6AgoF+gIKAfoCCgH6AgoF+'],
-            volume: 0.3
-        });
-        
-        // Background music
-        this.music = new Howl({
-            src: ['https://cdn.freesound.org/previews/316/316917_5123451-lq.mp3'],
-            volume: 0.2,
-            loop: trueICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+    // Store game reference globally for debugging only
+    window._game = game;
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        game.scale.refresh();
+    });
+    
+    // Handle visibility change (pause when tab is not visible)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            game.scene.scenes.forEach(scene => {
+                if (scene.scene.key === 'Game' && scene.scene.isActive()) {
+                    scene.eventBus?.emit('GAME_PAUSE', { paused: true });
+                }
+            });
+        }
+    });
+    
+    // Log successful initialization
+    console.log('Gravity Wars: Cosmic Arena initialized');
+});
+
+// Export configuration for use in other modules
+window.GameConfig = GameConfig;

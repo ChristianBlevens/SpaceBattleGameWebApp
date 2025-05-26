@@ -7,11 +7,18 @@ class MenuScene extends Phaser.Scene {
         this.selectedIndex = 0;
         this.stars = [];
         this.menuReady = false;
+        
+        // Create minimal event system for menu
+        this.eventBus = new EventBus();
+        this.audioHandler = null;
     }
     
     create() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
+        
+        // Setup audio handler
+        this.setupAudioHandler();
         
         // Create animated starfield background
         this.createAnimatedBackground();
@@ -92,14 +99,34 @@ class MenuScene extends Phaser.Scene {
         controlsText.setOrigin(1, 1);
         
         // Play menu music
-        if (!AudioManager.music.playing()) {
-            AudioManager.playMusic();
-        }
+        this.audioHandler.playMusic();
         
         // Enable menu after animations
         this.time.delayedCall(1500, () => {
             this.menuReady = true;
         });
+    }
+    
+    setupAudioHandler() {
+        this.audioHandler = {
+            playSound: (sound) => {
+                if (this.sound && !this.sound.mute) {
+                    this.sound.play(sound, { volume: 0.5 });
+                }
+            },
+            playMusic: () => {
+                if (this.sound && !this.sound.mute && !this.music) {
+                    this.music = this.sound.add('music', { loop: true, volume: 0.3 });
+                    this.music.play();
+                }
+            },
+            stopMusic: () => {
+                if (this.music) {
+                    this.music.stop();
+                    this.music = null;
+                }
+            }
+        };
     }
     
     createAnimatedBackground() {
@@ -234,7 +261,7 @@ class MenuScene extends Phaser.Scene {
                 menuItem.on('pointerover', () => {
                     if (!this.menuReady) return;
                     this.selectMenuItem(index);
-                    AudioManager.play('hit');
+                    this.audioHandler.playSound('hit');
                 });
                 
                 menuItem.on('pointerdown', () => {
@@ -309,7 +336,7 @@ class MenuScene extends Phaser.Scene {
         }
         
         this.selectMenuItem(newIndex);
-        AudioManager.play('hit');
+        this.audioHandler.playSound('hit');
     }
     
     selectMenuItem(index) {
@@ -366,7 +393,7 @@ class MenuScene extends Phaser.Scene {
         if (!menuItem || menuItem.disabled) return;
         
         // Play selection sound
-        AudioManager.play('shoot');
+        this.audioHandler.playSound('shoot');
         
         // Visual feedback
         this.tweens.add({
@@ -388,7 +415,7 @@ class MenuScene extends Phaser.Scene {
         this.cameras.main.fade(1000, 0, 0, 0);
         
         // Stop menu music
-        AudioManager.stopMusic();
+        this.audioHandler.stopMusic();
         
         // Transition to game
         this.cameras.main.once('camerafadeoutcomplete', () => {
@@ -447,7 +474,7 @@ class MenuScene extends Phaser.Scene {
         soundText.on('pointerdown', () => {
             this.sound.mute = !this.sound.mute;
             soundText.setText(`Sound: ${!this.sound.mute ? 'ON' : 'OFF'}`);
-            AudioManager.play('hit');
+            this.audioHandler.playSound('hit');
         });
         
         // Quality options
@@ -481,7 +508,7 @@ class MenuScene extends Phaser.Scene {
         backButton.setInteractive({ useHandCursor: true });
         
         backButton.on('pointerdown', () => {
-            AudioManager.play('hit');
+            this.audioHandler.playSound('hit');
             overlay.destroy();
             optionsTitle.destroy();
             soundText.destroy();
@@ -558,7 +585,7 @@ class MenuScene extends Phaser.Scene {
         backButton.setInteractive({ useHandCursor: true });
         
         backButton.on('pointerdown', () => {
-            AudioManager.play('hit');
+            this.audioHandler.playSound('hit');
             overlay.destroy();
             creditsTitle.destroy();
             creditsText.destroy();

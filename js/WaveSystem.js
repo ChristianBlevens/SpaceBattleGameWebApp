@@ -2,8 +2,11 @@
 // REFACTORED: Removed visual effects and direct UI manipulation
 
 class WaveSystem {
-    constructor(scene) {
+    constructor(scene, eventBus, gameState, entityFactory) {
         this.scene = scene;
+        this.eventBus = eventBus;
+        this.gameState = gameState;
+        this.entityFactory = entityFactory;
         this.currentWave = 0;
         this.waveConfigs = [];
         this.spawnTimer = 0;
@@ -25,7 +28,7 @@ class WaveSystem {
     
     init() {
         // Listen for game start
-        window.EventBus.on(window.GameEvents.GAME_START, () => {
+        this.eventBus.on('GAME_START', () => {
             this.reset();
         });
     }
@@ -45,11 +48,11 @@ class WaveSystem {
         const waveConfig = this.generateWaveConfig(waveNumber);
         
         // Update game state
-        window.GameState.update('waves.current', waveNumber);
-        window.GameState.update('waves.waveInProgress', true);
-        window.GameState.update('waves.enemiesRemaining', waveConfig.totalEnemies);
-        window.GameState.update('waves.totalEnemies', waveConfig.totalEnemies);
-        window.GameState.update('waves.spawnsRemaining', waveConfig.totalEnemies);
+        this.gameState.update('waves.current', waveNumber);
+        this.gameState.update('waves.waveInProgress', true);
+        this.gameState.update('waves.enemiesRemaining', waveConfig.totalEnemies);
+        this.gameState.update('waves.totalEnemies', waveConfig.totalEnemies);
+        this.gameState.update('waves.spawnsRemaining', waveConfig.totalEnemies);
         
         // Store wave config
         this.waveConfigs[waveNumber] = waveConfig;
@@ -57,20 +60,20 @@ class WaveSystem {
         this.nextSpawnTime = 0;
         
         // Emit wave announcement event
-        window.EventBus.emit(window.GameEvents.WAVE_ANNOUNCED, {
+        this.eventBus.emit('WAVE_ANNOUNCED', {
             waveNumber: waveNumber,
             isBossWave: waveConfig.isBossWave,
             enemyCount: waveConfig.totalEnemies
         });
         
         // Emit wave start event
-        window.EventBus.emit(window.GameEvents.WAVE_START, {
+        this.eventBus.emit('WAVE_START', {
             wave: waveNumber,
             enemies: waveConfig.totalEnemies
         });
         
         // Play wave start sound
-        AudioManager.play('powerup');
+        this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
     }
     
     generateWaveConfig(waveNumber) {
@@ -155,7 +158,7 @@ class WaveSystem {
     }
     
     update(deltaTime) {
-        if (!window.GameState.get('waves.waveInProgress')) return;
+        if (!this.gameState.get('waves.waveInProgress')) return;
         
         const waveConfig = this.waveConfigs[this.currentWave];
         if (!waveConfig) return;
@@ -169,7 +172,7 @@ class WaveSystem {
             if (spawnInfo) {
                 this.spawnEnemy(spawnInfo);
                 this.spawnsRemaining--;
-                window.GameState.update('waves.spawnsRemaining', this.spawnsRemaining);
+                this.gameState.update('waves.spawnsRemaining', this.spawnsRemaining);
             }
             
             // Set next spawn time
@@ -199,11 +202,10 @@ class WaveSystem {
         };
         
         // Create enemy using factory
-        const factory = new EntityFactory(this.scene);
-        const enemyId = factory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
+        const enemyId = this.entityFactory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
         
         // Emit spawn event for other systems
-        window.EventBus.emit(window.GameEvents.ENEMY_SPAWNED, {
+        this.eventBus.emit('ENEMY_SPAWNED', {
             entityId: enemyId,
             faction: spawnInfo.faction,
             position: { x, y }
@@ -226,10 +228,10 @@ class WaveSystem {
         return {
             waveNumber: this.currentWave,
             totalEnemies: waveConfig.totalEnemies,
-            enemiesRemaining: window.GameState.get('waves.enemiesRemaining'),
+            enemiesRemaining: this.gameState.get('waves.enemiesRemaining'),
             spawnsRemaining: this.spawnsRemaining,
             isBossWave: waveConfig.isBossWave,
-            inProgress: window.GameState.get('waves.waveInProgress')
+            inProgress: this.gameState.get('waves.waveInProgress')
         };
     }
 }

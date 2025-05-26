@@ -2,25 +2,26 @@
 // REFACTORED: Removed rendering, UI, and upgrade responsibilities. Now purely handles combat logic.
 
 class CombatSystem {
-    constructor(scene) {
+    constructor(scene, eventBus, entityManager, gameState) {
         this.scene = scene;
-        this.entityManager = window.EntityManager;
-        this.gameState = window.GameState;
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.gameState = gameState;
     }
     
     init() {
         // Listen for collision events from PhysicsSystem
-        window.EventBus.on(window.GameEvents.COLLISION_DETECTED, (data) => {
+        this.eventBus.on('COLLISION_DETECTED', (data) => {
             this.handleCollision(data);
         });
         
         // Listen for damage events
-        window.EventBus.on(window.GameEvents.PROJECTILE_HIT, (data) => {
+        this.eventBus.on('PROJECTILE_HIT', (data) => {
             this.handleProjectileHit(data);
         });
         
         // Listen for enemy shoot requests
-        window.EventBus.on(window.GameEvents.ENEMY_SHOOT_REQUEST, (data) => {
+        this.eventBus.on('ENEMY_SHOOT_REQUEST', (data) => {
             this.handleEnemyShootRequest(data);
         });
     }
@@ -53,7 +54,7 @@ class CombatSystem {
             
             if (newTimer === 0) {
                 this.gameState.breakCombo();
-                window.EventBus.emit(window.GameEvents.COMBO_BREAK);
+                this.eventBus.emit('COMBO_BREAK');
             }
         }
     }
@@ -77,7 +78,7 @@ class CombatSystem {
                     
                     // Destroy projectile if not penetrating
                     if (!projectileData.penetrating) {
-                        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+                        this.eventBus.emit('DESTROY_ENTITY', {
                             entityId: entityA
                         });
                     }
@@ -114,7 +115,7 @@ class CombatSystem {
         }
         
         // Forward to weapon system
-        window.EventBus.emit(window.GameEvents.ENEMY_SHOOT, data);
+        this.eventBus.emit('ENEMY_SHOOT', data);
     }
     
     canDamageTarget(projectileId, targetId) {
@@ -154,19 +155,19 @@ class CombatSystem {
     }
     
     damagePlayer(damage) {
-        const health = this.entityManager.getComponent(this.scene.player, 'health');
+        const health = this.entityManager.getComponent(this.playerId, 'health');
         if (!health || health.invulnerable) return;
         
         const actualDamage = this.gameState.damagePlayer(damage);
         
         if (actualDamage > 0) {
             // Only emit event for other systems to handle
-            window.EventBus.emit(window.GameEvents.PLAYER_DAMAGED, { 
+            this.eventBus.emit('PLAYER_DAMAGED', { 
                 damage: actualDamage 
             });
             
             // Play sound
-            AudioManager.play('hit');
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'hit' });
         }
     }
     
@@ -184,14 +185,14 @@ class CombatSystem {
             this.handleEnemyDeath(enemyId, transform);
         } else {
             // Enemy damaged but alive
-            window.EventBus.emit(window.GameEvents.ENEMY_DAMAGED, {
+            this.eventBus.emit('ENEMY_DAMAGED', {
                 entityId: enemyId,
                 damage: damage,
                 position: transform ? { x: transform.x, y: transform.y } : null
             });
             
             // Play sound
-            AudioManager.play('hit');
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'hit' });
         }
     }
     
@@ -211,7 +212,7 @@ class CombatSystem {
         this.gameState.update('waves.enemiesRemaining', remaining);
         
         // Emit events for other systems
-        window.EventBus.emit(window.GameEvents.ENEMY_KILLED, {
+        this.eventBus.emit('ENEMY_KILLED', {
             entityId: enemyId,
             position: transform ? { x: transform.x, y: transform.y } : null,
             points: points,
@@ -221,7 +222,7 @@ class CombatSystem {
         // Spawn powerup chance
         if (Math.random() < 0.3 && transform) {
             const type = Phaser.Math.Pick(['health', 'energy', 'credits']);
-            window.EventBus.emit(window.GameEvents.SPAWN_POWERUP, {
+            this.eventBus.emit('SPAWN_POWERUP', {
                 x: transform.x,
                 y: transform.y,
                 type: type
@@ -230,11 +231,11 @@ class CombatSystem {
         
         // Check wave completion
         if (remaining <= 0 && this.gameState.get('waves.spawnsRemaining') <= 0) {
-            window.EventBus.emit(window.GameEvents.WAVE_COMPLETE);
+            this.eventBus.emit('WAVE_COMPLETE');
         }
         
         // Destroy the entity
-        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+        this.eventBus.emit('DESTROY_ENTITY', {
             entityId: enemyId
         });
     }
@@ -246,7 +247,7 @@ class CombatSystem {
         switch (powerupData.type) {
             case 'health':
                 this.gameState.healPlayer(powerupData.value);
-                window.EventBus.emit(window.GameEvents.PLAYER_HEAL, { 
+                this.eventBus.emit('PLAYER_HEAL', { 
                     amount: powerupData.value 
                 });
                 break;
@@ -265,7 +266,7 @@ class CombatSystem {
         }
         
         // Emit collection event
-        window.EventBus.emit(window.GameEvents.POWERUP_COLLECTED, {
+        this.eventBus.emit('POWERUP_COLLECTED', {
             powerupId: powerupId,
             type: powerupData.type,
             value: powerupData.value,
@@ -273,19 +274,19 @@ class CombatSystem {
         });
         
         // Play sound
-        AudioManager.play('powerup');
+        this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
         
         // Destroy the powerup
-        window.EventBus.emit(window.GameEvents.DESTROY_ENTITY, {
+        this.eventBus.emit('DESTROY_ENTITY', {
             entityId: powerupId
         });
     }
     
     handlePlayerDeath() {
-        const transform = this.entityManager.getComponent(this.scene.player, 'transform');
+        const transform = this.entityManager.getComponent(this.playerId, 'transform');
         
         // Emit death event
-        window.EventBus.emit(window.GameEvents.PLAYER_DIED, {
+        this.eventBus.emit('PLAYER_DIED', {
             position: transform ? { x: transform.x, y: transform.y } : null
         });
         
@@ -294,7 +295,7 @@ class CombatSystem {
         
         // Delay before game over
         this.scene.time.delayedCall(2000, () => {
-            window.EventBus.emit(window.GameEvents.GAME_OVER, {
+            this.eventBus.emit('GAME_OVER', {
                 victory: false
             });
         });
@@ -309,7 +310,7 @@ class CombatSystem {
         this.gameState.update('waves.waveInProgress', false);
         
         // Emit reward event
-        window.EventBus.emit(window.GameEvents.WAVE_REWARDS, {
+        this.eventBus.emit('WAVE_REWARDS', {
             waveNumber: waveNumber,
             points: waveBonus,
             credits: 500 * waveNumber
@@ -317,5 +318,4 @@ class CombatSystem {
     }
 }
 
-// Export for use
-window.CombatSystem = CombatSystem;
+// CombatSystem will be instantiated by GameInitializer
