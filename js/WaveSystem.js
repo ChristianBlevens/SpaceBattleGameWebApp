@@ -139,7 +139,7 @@ class WaveSystem {
         }
         
         // Sentinels - spawn near each other with set intervals
-        const sentinelLine = this.getLinePositions(sentinelCount, 150); // 150 unit spacing
+        const sentinelLine = this.getLinePositions(sentinelCount, 450); // 450 unit spacing (3x farther apart)
         for (let i = 0; i < sentinelCount; i++) {
             config.spawns.push({
                 type: 'sentinel',

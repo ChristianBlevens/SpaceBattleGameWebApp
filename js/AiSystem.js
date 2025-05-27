@@ -1,5 +1,5 @@
-// AISystem.js - Advanced AI behavior system with faction-specific behaviors
-// COMPLETE REWRITE: Proper faction behaviors with intelligent combat
+// AISystem.js - Modular AI behavior system with shared traits
+// REFACTORED: Complete modular rewrite with trait composition
 
 class AISystem {
     constructor(scene, eventBus) {
@@ -7,19 +7,37 @@ class AISystem {
         this.eventBus = eventBus;
         this.playerId = null;
         
-        // Faction behaviors will be initialized after eventBus is available
+        // AI configuration
+        this.config = {
+            detectionRange: 1200, // Max detection range for all AI
+            shootingRange: 600,   // Max shooting range
+            meleeRange: 200      // Close combat range
+        };
+        
+        // Shared behavior traits
+        this.traits = {};
         this.factionBehaviors = {};
     }
     
     init(entityManager) {
         this.entityManager = entityManager;
         
-        // Initialize faction behaviors with eventBus and scene
+        // Initialize shared trait behaviors
+        this.traits = {
+            targeting: new TargetingTrait(this.entityManager, this.config),
+            shooting: new ShootingTrait(this.eventBus, this.entityManager, this.config),
+            movement: new MovementTrait(this.entityManager, this.scene),
+            gravityAvoidance: new GravityAvoidanceTrait(this.entityManager),
+            flocking: new FlockingTrait(this.entityManager),
+            formation: new FormationTrait(this.entityManager)
+        };
+        
+        // Initialize faction behaviors with trait composition
         this.factionBehaviors = {
-            swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene),
-            sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene),
-            phantom: new PhantomBehavior(this.eventBus, this.entityManager, this.scene),
-            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene)
+            swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
+            sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
+            phantom: new PhantomBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
+            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene, this.traits)
         };
         
         // Listen for player creation
@@ -34,10 +52,9 @@ class AISystem {
     update(deltaTime, entityManager) {
         const aiEntities = entityManager.query('ai', 'transform', 'physics');
         
-        // Let each faction behavior handle its entities
+        // Group entities by faction
         const factionGroups = {};
         
-        // Group entities by faction
         aiEntities.forEach(entityId => {
             const ai = entityManager.getComponent(entityId, 'ai');
             if (!ai) return;
@@ -51,24 +68,22 @@ class AISystem {
         // Update each faction group
         Object.entries(factionGroups).forEach(([faction, entities]) => {
             if (this.factionBehaviors[faction]) {
-                if (entities.length > 0 && Math.random() < 0.01) { // Log occasionally
+                if (entities.length > 0 && Math.random() < 0.01) {
                     console.log(`[AISystem] Updating ${faction} behavior for ${entities.length} entities`);
                 }
                 this.factionBehaviors[faction].updateGroup(entities, deltaTime, this.playerId);
-            } else if (faction !== 'neutral' && faction !== 'player') {
-                // Only warn for unexpected factions, not neutral or player
-                console.warn(`[AISystem] No behavior found for faction: ${faction}`);
             }
         });
     }
 }
 
-// Base behavior class
-class BaseBehavior {
-    constructor(eventBus, entityManager, scene) {
-        this.eventBus = eventBus;
+// Shared AI Traits - Modular behaviors that can be composed
+
+// Targeting trait - handles enemy and player detection with range limits
+class TargetingTrait {
+    constructor(entityManager, config) {
         this.entityManager = entityManager;
-        this.scene = scene;
+        this.config = config;
     }
     
     getDistance(transformA, transformB) {
@@ -77,62 +92,106 @@ class BaseBehavior {
         return Math.sqrt(dx * dx + dy * dy);
     }
     
-    calculateAngle(from, to) {
-        return Math.atan2(to.y - from.y, to.x - from.x);
-    }
-    
-    findNearestEnemy(entityId, transform, faction) {
-        let nearest = null;
-        let minDist = Infinity;
+    findTargets(entityId, transform, faction, maxRange = null) {
+        const range = maxRange || this.config.detectionRange;
+        const targets = [];
         
-        // Check all enemies
+        // Check player
+        const playerEntities = this.entityManager.getEntitiesByType('player');
+        if (playerEntities.length > 0) {
+            const playerId = playerEntities[0];
+            const playerTransform = this.entityManager.getComponent(playerId, 'transform');
+            if (playerTransform) {
+                const dist = this.getDistance(transform, playerTransform);
+                if (dist <= range) {
+                    targets.push({
+                        id: playerId,
+                        transform: playerTransform,
+                        distance: dist,
+                        type: 'player',
+                        priority: 1 // High priority
+                    });
+                }
+            }
+        }
+        
+        // Check enemy factions - ALL enemies shoot at other factions
         const enemies = this.entityManager.getEntitiesByType('enemy');
-        enemies.forEach(otherId => {
-            if (otherId === entityId) return;
+        enemies.forEach(enemyId => {
+            if (enemyId === entityId) return;
             
-            const otherAI = this.entityManager.getComponent(otherId, 'ai');
-            const otherTransform = this.entityManager.getComponent(otherId, 'transform');
+            const enemyAI = this.entityManager.getComponent(enemyId, 'ai');
+            const enemyTransform = this.entityManager.getComponent(enemyId, 'transform');
             
-            if (!otherAI || !otherTransform || otherAI.faction === faction) return;
+            // Target any enemy that's not same faction
+            if (!enemyAI || !enemyTransform || enemyAI.faction === faction) return;
             
-            const dist = this.getDistance(transform, otherTransform);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = { id: otherId, transform: otherTransform, distance: dist };
+            const dist = this.getDistance(transform, enemyTransform);
+            if (dist <= range) {
+                targets.push({
+                    id: enemyId,
+                    transform: enemyTransform,
+                    distance: dist,
+                    type: 'enemy',
+                    faction: enemyAI.faction,
+                    priority: 0.8 // Lower than player
+                });
             }
         });
         
-        return nearest;
+        // Sort by priority then distance
+        targets.sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority;
+            return a.distance - b.distance;
+        });
+        
+        return targets;
     }
     
-    findPlayer() {
-        const playerEntities = this.entityManager.getEntitiesByType('player');
-        if (playerEntities.length === 0) return null;
-        
-        const playerId = playerEntities[0];
-        const transform = this.entityManager.getComponent(playerId, 'transform');
-        if (!transform) return null;
-        
-        return { id: playerId, transform: transform };
+    getNearestTarget(entityId, transform, faction, maxRange = null) {
+        const targets = this.findTargets(entityId, transform, faction, maxRange);
+        return targets.length > 0 ? targets[0] : null;
+    }
+}
+
+// Shooting trait - handles weapon firing with prediction
+class ShootingTrait {
+    constructor(eventBus, entityManager, config) {
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.config = config;
     }
     
-    applyForce(entityId, forceX, forceY) {
-        // Directly apply velocity to enemy instead of using force system
-        const physics = this.entityManager.getComponent(entityId, 'physics');
-        const sprite = this.scene.sprites.get(entityId);
+    canShoot(entityId, targetDistance) {
+        if (targetDistance > this.config.shootingRange) return false;
         
-        if (physics && sprite && sprite.body) {
-            physics.velocity.x += forceX * 10; // Scale up force to velocity
-            physics.velocity.y += forceY * 10;
+        const weapon = this.entityManager.getComponent(entityId, 'weapon');
+        if (!weapon || weapon.lastFireTime > 0) return false;
+        
+        return true;
+    }
+    
+    aimAndShoot(shooterId, target, accuracy = 1.0) {
+        const shooterTransform = this.entityManager.getComponent(shooterId, 'transform');
+        if (!shooterTransform) return;
+        
+        let aimX = target.transform.x;
+        let aimY = target.transform.y;
+        
+        // Predict target movement if physics available
+        const targetPhysics = this.entityManager.getComponent(target.id, 'physics');
+        if (targetPhysics) {
+            const dist = target.distance;
+            const projectileSpeed = 15; // Approximate projectile speed
+            const leadTime = dist / projectileSpeed;
             
-            // Apply velocity to sprite immediately
-            sprite.setVelocity(physics.velocity.x, physics.velocity.y);
+            aimX += targetPhysics.velocity.x * leadTime * accuracy;
+            aimY += targetPhysics.velocity.y * leadTime * accuracy;
         }
-    }
-    
-    requestShoot(shooterId, angle) {
-        const shooter = this.entityManager.getComponent(shooterId, 'transform');
-        if (!shooter) return;
+        
+        // Add inaccuracy for some factions
+        const spread = (1 - accuracy) * 0.3;
+        const angle = Math.atan2(aimY - shooterTransform.y, aimX - shooterTransform.x) + (Math.random() - 0.5) * spread;
         
         this.eventBus.emit('ENEMY_SHOOT_REQUEST', {
             shooterId: shooterId,
@@ -141,23 +200,302 @@ class BaseBehavior {
     }
 }
 
-// Swarm behavior - aggressive group attacks
-class SwarmBehavior extends BaseBehavior {
-    constructor(eventBus, entityManager, scene) {
-        super(eventBus, entityManager, scene);
-        this.boidParams = {
-            separationRadius: 80,
-            alignmentRadius: 150,
-            cohesionRadius: 200,
-            separationForce: 0.2,
-            alignmentForce: 0.1,
-            cohesionForce: 0.15,
-            attackForce: 0.02
+// Movement trait - basic movement behaviors
+class MovementTrait {
+    constructor(entityManager, scene) {
+        this.entityManager = entityManager;
+        this.scene = scene;
+    }
+    
+    applyForce(entityId, forceX, forceY) {
+        const physics = this.entityManager.getComponent(entityId, 'physics');
+        const sprite = this.scene.sprites.get(entityId);
+        
+        if (physics && sprite && sprite.body) {
+            physics.velocity.x += forceX * 10;
+            physics.velocity.y += forceY * 10;
+            sprite.setVelocity(physics.velocity.x, physics.velocity.y);
+        }
+    }
+    
+    moveToward(transform, targetX, targetY, speed) {
+        const dx = targetX - transform.x;
+        const dy = targetY - transform.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist === 0) return { x: 0, y: 0 };
+        
+        return {
+            x: (dx / dist) * speed,
+            y: (dy / dist) * speed
         };
     }
     
+    orbit(transform, centerX, centerY, radius, angle, speed) {
+        const targetX = centerX + Math.cos(angle) * radius;
+        const targetY = centerY + Math.sin(angle) * radius;
+        return this.moveToward(transform, targetX, targetY, speed);
+    }
+    
+    maintainDistance(transform, targetTransform, idealDistance, tolerance = 50) {
+        const dx = targetTransform.x - transform.x;
+        const dy = targetTransform.y - transform.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist === 0) return { x: 0, y: 0 };
+        
+        let forceX = 0, forceY = 0;
+        
+        if (dist < idealDistance - tolerance) {
+            // Too close - back away
+            forceX = -(dx / dist) * 0.008;
+            forceY = -(dy / dist) * 0.008;
+        } else if (dist > idealDistance + tolerance) {
+            // Too far - move closer
+            forceX = (dx / dist) * 0.006;
+            forceY = (dy / dist) * 0.006;
+        }
+        
+        return { x: forceX, y: forceY };
+    }
+}
+
+// Gravity avoidance trait
+class GravityAvoidanceTrait {
+    constructor(entityManager) {
+        this.entityManager = entityManager;
+    }
+    
+    detectGravitySources(entityTransform) {
+        const gravitySources = [];
+        
+        // Check planets
+        const planets = this.entityManager.getEntitiesByType('planet');
+        planets.forEach(planetId => {
+            const planetTransform = this.entityManager.getComponent(planetId, 'transform');
+            const planetPhysics = this.entityManager.getComponent(planetId, 'physics');
+            
+            if (!planetTransform || !planetPhysics) return;
+            
+            const dx = planetTransform.x - entityTransform.x;
+            const dy = planetTransform.y - entityTransform.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const gravityRange = planetPhysics.radius * 8;
+            
+            if (dist < gravityRange * 1.5) {
+                gravitySources.push({
+                    type: 'planet',
+                    transform: planetTransform,
+                    distance: dist,
+                    gravityStrength: planetPhysics.mass / 600,
+                    gravityRadius: gravityRange,
+                    radius: planetPhysics.radius
+                });
+            }
+        });
+        
+        // Check vortexes
+        const vortexes = this.entityManager.query('catastrophe', 'transform');
+        vortexes.forEach(vortexId => {
+            const vortexTransform = this.entityManager.getComponent(vortexId, 'transform');
+            const catastrophe = this.entityManager.getComponent(vortexId, 'catastrophe');
+            
+            if (!vortexTransform || !catastrophe) return;
+            
+            const dx = vortexTransform.x - entityTransform.x;
+            const dy = vortexTransform.y - entityTransform.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const pullRadius = catastrophe.pullRadius || 2000;
+            
+            if (dist < pullRadius * 1.5) {
+                gravitySources.push({
+                    type: 'vortex',
+                    transform: vortexTransform,
+                    distance: dist,
+                    pullStrength: catastrophe.strength || 400,
+                    pullRadius: pullRadius,
+                    eventHorizon: catastrophe.radius || 300
+                });
+            }
+        });
+        
+        return gravitySources;
+    }
+    
+    calculateAvoidance(entityTransform, gravitySources, multiplier = 1.0) {
+        let avoidX = 0, avoidY = 0;
+        
+        gravitySources.forEach(source => {
+            const dx = entityTransform.x - source.transform.x;
+            const dy = entityTransform.y - source.transform.y;
+            const dist = source.distance;
+            
+            if (dist === 0) return;
+            
+            let avoidanceStrength = 0;
+            
+            if (source.type === 'planet') {
+                const dangerZone = source.radius + 150;
+                if (dist < dangerZone) {
+                    avoidanceStrength = 0.2;
+                } else if (dist < source.gravityRadius) {
+                    const normalizedDist = (dist - dangerZone) / (source.gravityRadius - dangerZone);
+                    avoidanceStrength = 0.1 * (1 - normalizedDist) * source.gravityStrength;
+                }
+            } else if (source.type === 'vortex') {
+                if (dist < source.eventHorizon + 150) {
+                    avoidanceStrength = 0.3;
+                } else if (dist < source.pullRadius) {
+                    const normalizedDist = (dist - source.eventHorizon) / (source.pullRadius - source.eventHorizon);
+                    const exponentialFactor = Math.pow(1 - normalizedDist, 2);
+                    avoidanceStrength = 0.15 * exponentialFactor * (source.pullStrength / 400);
+                }
+            }
+            
+            if (avoidanceStrength > 0) {
+                avoidX += (dx / dist) * avoidanceStrength * multiplier;
+                avoidY += (dy / dist) * avoidanceStrength * multiplier;
+            }
+        });
+        
+        return { x: avoidX, y: avoidY };
+    }
+}
+
+// Flocking trait for swarm behaviors
+class FlockingTrait {
+    constructor(entityManager) {
+        this.entityManager = entityManager;
+        this.params = {
+            separationRadius: 60,
+            alignmentRadius: 120,
+            cohesionRadius: 150,
+            separationForce: 0.25,
+            alignmentForce: 0.05,
+            cohesionForce: 0.1
+        };
+    }
+    
+    calculateFlocking(entityId, transform, physics, neighbors) {
+        let forceX = 0, forceY = 0;
+        let neighborCount = 0;
+        let avgVelX = 0, avgVelY = 0;
+        let cohesionX = 0, cohesionY = 0;
+        
+        neighbors.forEach(otherId => {
+            if (otherId === entityId) return;
+            
+            const otherTransform = this.entityManager.getComponent(otherId, 'transform');
+            const otherPhysics = this.entityManager.getComponent(otherId, 'physics');
+            
+            if (!otherTransform || !otherPhysics) return;
+            
+            const dx = otherTransform.x - transform.x;
+            const dy = otherTransform.y - transform.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist === 0) return;
+            
+            // Separation
+            if (dist < this.params.separationRadius) {
+                forceX -= (dx / dist) * this.params.separationForce / dist;
+                forceY -= (dy / dist) * this.params.separationForce / dist;
+            }
+            
+            // Alignment & Cohesion
+            if (dist < this.params.alignmentRadius) {
+                avgVelX += otherPhysics.velocity.x;
+                avgVelY += otherPhysics.velocity.y;
+                cohesionX += otherTransform.x;
+                cohesionY += otherTransform.y;
+                neighborCount++;
+            }
+        });
+        
+        if (neighborCount > 0) {
+            // Alignment
+            avgVelX /= neighborCount;
+            avgVelY /= neighborCount;
+            forceX += (avgVelX - physics.velocity.x) * this.params.alignmentForce;
+            forceY += (avgVelY - physics.velocity.y) * this.params.alignmentForce;
+            
+            // Cohesion
+            cohesionX /= neighborCount;
+            cohesionY /= neighborCount;
+            const cohDx = cohesionX - transform.x;
+            const cohDy = cohesionY - transform.y;
+            forceX += cohDx * this.params.cohesionForce * 0.001;
+            forceY += cohDy * this.params.cohesionForce * 0.001;
+        }
+        
+        return { x: forceX, y: forceY };
+    }
+}
+
+// Formation trait for organized movement
+class FormationTrait {
+    constructor(entityManager) {
+        this.entityManager = entityManager;
+    }
+    
+    assignFormationPositions(entities, centerX, centerY, formationType = 'circle') {
+        const positions = new Map();
+        
+        if (formationType === 'circle') {
+            const radius = 150 + entities.length * 20;
+            entities.forEach((entityId, index) => {
+                const angle = (index / entities.length) * Math.PI * 2;
+                positions.set(entityId, {
+                    x: centerX + Math.cos(angle) * radius,
+                    y: centerY + Math.sin(angle) * radius
+                });
+            });
+        } else if (formationType === 'line') {
+            const spacing = 450; // 3x spacing for sentinels
+            entities.forEach((entityId, index) => {
+                const offset = index * spacing - (entities.length - 1) * spacing / 2;
+                positions.set(entityId, {
+                    x: centerX + offset,
+                    y: centerY
+                });
+            });
+        }
+        
+        return positions;
+    }
+    
+    moveToFormation(transform, targetPosition, speed = 0.008) {
+        const dx = targetPosition.x - transform.x;
+        const dy = targetPosition.y - transform.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 30) return { x: 0, y: 0 }; // Close enough
+        
+        return {
+            x: (dx / dist) * speed,
+            y: (dy / dist) * speed
+        };
+    }
+}
+
+// Base behavior class
+class BaseBehavior {
+    constructor(eventBus, entityManager, scene, traits) {
+        this.eventBus = eventBus;
+        this.entityManager = entityManager;
+        this.scene = scene;
+        this.traits = traits; // Shared trait behaviors
+    }
+    
+    applyForce(entityId, forceX, forceY) {
+        this.traits.movement.applyForce(entityId, forceX, forceY);
+    }
+}
+
+// Swarm behavior - chaotic bee-like attacks
+class SwarmBehavior extends BaseBehavior {
     updateGroup(entities, deltaTime, playerId) {
-        // Calculate center of swarm
+        // Calculate swarm center
         let centerX = 0, centerY = 0;
         let count = 0;
         
@@ -175,134 +513,221 @@ class SwarmBehavior extends BaseBehavior {
             centerY /= count;
         }
         
-        // Find target for swarm
-        let swarmTarget = null;
-        const player = this.findPlayer();
-        if (player) {
-            const playerDist = Math.sqrt(
-                Math.pow(player.transform.x - centerX, 2) + 
-                Math.pow(player.transform.y - centerY, 2)
-            );
-            if (playerDist < 1000) {
-                swarmTarget = player;
-            }
-        }
+        // Find targets for swarm
+        const targets = [];
+        entities.forEach(entityId => {
+            const transform = this.entityManager.getComponent(entityId, 'transform');
+            if (!transform) return;
+            
+            const target = this.traits.targeting.getNearestTarget(entityId, transform, 'swarm');
+            if (target) targets.push(target);
+        });
         
         // Update each entity
         entities.forEach(entityId => {
-            this.updateEntity(entityId, entities, swarmTarget, deltaTime);
+            this.updateEntity(entityId, entities, targets, deltaTime);
         });
     }
     
-    updateEntity(entityId, swarmmates, swarmTarget, deltaTime) {
+    updateEntity(entityId, swarmmates, potentialTargets, deltaTime) {
         const ai = this.entityManager.getComponent(entityId, 'ai');
         const transform = this.entityManager.getComponent(entityId, 'transform');
         const physics = this.entityManager.getComponent(entityId, 'physics');
         
         if (!ai || !transform || !physics) return;
         
-        // Update AI state
-        ai.decisionTimer -= deltaTime * 1000;
-        if (ai.decisionTimer <= 0) {
-            ai.decisionTimer = 500; // Fast reactions
-            ai.aggressionLevel = 0.9;
-            ai.fearLevel = 0.1;
+        // Initialize swarm memory
+        if (!ai.memory.swarmPhase) {
+            ai.memory.swarmPhase = 'circling';
+            ai.memory.diveTimer = Math.random() * 2000;
+            ai.memory.chaosAngle = Math.random() * Math.PI * 2;
+            ai.memory.chaosSpeed = 0.002 + Math.random() * 0.004;
+            ai.memory.orbitAngle = Math.random() * Math.PI * 2;
+            ai.memory.orbitDirection = Math.random() > 0.5 ? 1 : -1;
         }
         
-        // Calculate boid forces
+        // Update timers
+        ai.memory.diveTimer -= deltaTime * 1000;
+        ai.memory.chaosAngle += ai.memory.chaosSpeed * deltaTime * 1000;
+        
+        // Get nearest target
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'swarm');
+        
+        // Update swarm phase
+        if (target) {
+            if (ai.memory.swarmPhase === 'circling' && ai.memory.diveTimer <= 0) {
+                ai.memory.swarmPhase = 'diving';
+                ai.memory.diveTimer = 1500 + Math.random() * 1000;
+                ai.memory.diveTarget = { 
+                    x: target.transform.x + (Math.random() - 0.5) * 100,
+                    y: target.transform.y + (Math.random() - 0.5) * 100
+                };
+            } else if (ai.memory.swarmPhase === 'diving' && (ai.memory.diveTimer <= 0 || target.distance < 100)) {
+                ai.memory.swarmPhase = 'buzzing';
+                ai.memory.diveTimer = 2000 + Math.random() * 1000;
+            } else if (ai.memory.swarmPhase === 'buzzing' && ai.memory.diveTimer <= 0) {
+                ai.memory.swarmPhase = 'circling';
+                ai.memory.diveTimer = 1000 + Math.random() * 2000;
+                ai.memory.orbitDirection *= -1;
+            }
+        }
+        
+        // Calculate forces
         let forceX = 0, forceY = 0;
-        let neighborCount = 0;
-        let avgVelX = 0, avgVelY = 0;
-        let cohesionX = 0, cohesionY = 0;
         
-        swarmmates.forEach(otherId => {
-            if (otherId === entityId) return;
-            
-            const otherTransform = this.entityManager.getComponent(otherId, 'transform');
-            const otherPhysics = this.entityManager.getComponent(otherId, 'physics');
-            
-            if (!otherTransform || !otherPhysics) return;
-            
-            const dx = otherTransform.x - transform.x;
-            const dy = otherTransform.y - transform.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            
-            if (dist === 0) return;
-            
-            // Separation
-            if (dist < this.boidParams.separationRadius) {
-                forceX -= (dx / dist) * this.boidParams.separationForce / dist;
-                forceY -= (dy / dist) * this.boidParams.separationForce / dist;
-            }
-            
-            // Alignment & Cohesion
-            if (dist < this.boidParams.alignmentRadius) {
-                avgVelX += otherPhysics.velocity.x;
-                avgVelY += otherPhysics.velocity.y;
-                cohesionX += otherTransform.x;
-                cohesionY += otherTransform.y;
-                neighborCount++;
-            }
-        });
+        // Flocking behavior
+        const flockForce = this.traits.flocking.calculateFlocking(entityId, transform, physics, swarmmates);
+        forceX += flockForce.x;
+        forceY += flockForce.y;
         
-        if (neighborCount > 0) {
-            // Alignment
-            avgVelX /= neighborCount;
-            avgVelY /= neighborCount;
-            forceX += (avgVelX - physics.velocity.x) * this.boidParams.alignmentForce;
-            forceY += (avgVelY - physics.velocity.y) * this.boidParams.alignmentForce;
-            
-            // Cohesion
-            cohesionX /= neighborCount;
-            cohesionY /= neighborCount;
-            const cohDx = cohesionX - transform.x;
-            const cohDy = cohesionY - transform.y;
-            forceX += cohDx * this.boidParams.cohesionForce * 0.001;
-            forceY += cohDy * this.boidParams.cohesionForce * 0.001;
-        }
+        // Chaos movement
+        const chaosX = Math.cos(ai.memory.chaosAngle) * 0.15;
+        const chaosY = Math.sin(ai.memory.chaosAngle) * 0.15;
         
-        // Attack target aggressively
-        if (swarmTarget) {
-            const dx = swarmTarget.transform.x - transform.x;
-            const dy = swarmTarget.transform.y - transform.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            
-            if (dist > 0) {
-                // Aggressive pursuit
-                forceX += (dx / dist) * this.boidParams.attackForce;
-                forceY += (dy / dist) * this.boidParams.attackForce;
-                
-                // Shoot frequently when in range
-                if (dist < 600) {
-                    const weapon = this.entityManager.getComponent(entityId, 'weapon');
-                    if (weapon && weapon.lastFireTime <= 0 && Math.random() < 0.05) {
-                        const angle = Math.atan2(dy, dx);
-                        this.requestShoot(entityId, angle);
+        // Phase-based behavior
+        if (target) {
+            switch (ai.memory.swarmPhase) {
+                case 'circling':
+                    ai.memory.orbitAngle += 0.003 * ai.memory.orbitDirection;
+                    const orbitRadius = 300 + Math.sin(ai.memory.chaosAngle * 0.5) * 100;
+                    const orbitForce = this.traits.movement.orbit(
+                        transform,
+                        target.transform.x,
+                        target.transform.y,
+                        orbitRadius,
+                        ai.memory.orbitAngle,
+                        0.02
+                    );
+                    forceX += orbitForce.x + chaosX;
+                    forceY += orbitForce.y + chaosY;
+                    break;
+                    
+                case 'diving':
+                    if (ai.memory.diveTarget) {
+                        const diveForce = this.traits.movement.moveToward(
+                            transform,
+                            ai.memory.diveTarget.x,
+                            ai.memory.diveTarget.y,
+                            0.08
+                        );
+                        forceX += diveForce.x;
+                        forceY += diveForce.y;
                     }
-                }
+                    break;
+                    
+                case 'buzzing':
+                    const buzzForce = this.traits.movement.maintainDistance(
+                        transform,
+                        target.transform,
+                        100,
+                        50
+                    );
+                    forceX += buzzForce.x + chaosX * 3;
+                    forceY += buzzForce.y + chaosY * 3;
+                    break;
             }
+            
+            // Shooting - swarm shoots frantically with low accuracy
+            if (this.traits.shooting.canShoot(entityId, target.distance) && 
+                (ai.memory.swarmPhase === 'diving' || ai.memory.swarmPhase === 'buzzing') && 
+                Math.random() < 0.1) {
+                this.traits.shooting.aimAndShoot(entityId, target, 0.7); // 70% accuracy
+            }
+        } else {
+            // No target - chaotic wandering
+            forceX += chaosX * 2;
+            forceY += chaosY * 2;
         }
+        
+        // Gravity avoidance - swarm is highly responsive
+        const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 1.5);
+        forceX += gravityAvoidance.x;
+        forceY += gravityAvoidance.y;
         
         // Apply forces
         this.applyForce(entityId, forceX, forceY);
         
-        // Update max speed for aggressive movement
-        physics.maxSpeed = 8;
-        physics.damping = 0.98;
+        // Update physics based on phase
+        switch (ai.memory.swarmPhase) {
+            case 'diving':
+                physics.maxSpeed = 12;
+                physics.damping = 0.99;
+                break;
+            case 'buzzing':
+                physics.maxSpeed = 10;
+                physics.damping = 0.96;
+                break;
+            default:
+                physics.maxSpeed = 8;
+                physics.damping = 0.98;
+        }
     }
 }
 
-// Sentinel behavior - defensive and tactical
+// Sentinel behavior - defensive and tactical with orbiting
 class SentinelBehavior extends BaseBehavior {
-    constructor(eventBus, entityManager, scene) {
-        super(eventBus, entityManager, scene);
-        this.formations = new Map(); // Track formations
+    constructor(eventBus, entityManager, scene, traits) {
+        super(eventBus, entityManager, scene, traits);
+        this.formations = new Map();
     }
     
     updateGroup(entities, deltaTime, playerId) {
+        // Form groups and assign formations
+        const groups = this.formGroups(entities);
+        
+        groups.forEach((groupMembers, leaderId) => {
+            const leaderTransform = this.entityManager.getComponent(leaderId, 'transform');
+            if (leaderTransform) {
+                const positions = this.traits.formation.assignFormationPositions(
+                    groupMembers,
+                    leaderTransform.x,
+                    leaderTransform.y,
+                    'circle'
+                );
+                this.formations.set(leaderId, positions);
+            }
+        });
+        
+        // Update each entity
         entities.forEach(entityId => {
             this.updateEntity(entityId, entities, deltaTime);
         });
+    }
+    
+    formGroups(entities) {
+        const groups = new Map();
+        const assigned = new Set();
+        
+        entities.forEach(entityId => {
+            if (assigned.has(entityId)) return;
+            
+            const transform = this.entityManager.getComponent(entityId, 'transform');
+            if (!transform) return;
+            
+            const group = [entityId];
+            assigned.add(entityId);
+            
+            // Find nearby sentinels
+            entities.forEach(otherId => {
+                if (otherId === entityId || assigned.has(otherId)) return;
+                
+                const otherTransform = this.entityManager.getComponent(otherId, 'transform');
+                if (!otherTransform) return;
+                
+                const dist = this.traits.targeting.getDistance(transform, otherTransform);
+                if (dist < 600) { // Group radius
+                    group.push(otherId);
+                    assigned.add(otherId);
+                }
+            });
+            
+            if (group.length > 1) {
+                groups.set(entityId, group);
+            }
+        });
+        
+        return groups;
     }
     
     updateEntity(entityId, allies, deltaTime) {
@@ -315,102 +740,110 @@ class SentinelBehavior extends BaseBehavior {
         // Initialize memory
         if (!ai.memory.guardPoint) {
             ai.memory.guardPoint = { x: transform.x, y: transform.y };
-            ai.memory.patrolRadius = 300;
-            ai.memory.patrolAngle = Math.random() * Math.PI * 2;
+            ai.memory.orbitRadius = 400;
+            ai.memory.orbitAngle = Math.random() * Math.PI * 2;
+            ai.memory.orbitSpeed = 0.001 + Math.random() * 0.001;
+            ai.memory.preferredDistance = 350 + Math.random() * 100;
         }
         
-        // Update AI state
-        ai.decisionTimer -= deltaTime * 1000;
-        if (ai.decisionTimer <= 0) {
-            ai.decisionTimer = 1000; // Thoughtful decisions
-            ai.aggressionLevel = 0.4;
-            ai.fearLevel = 0.3;
+        // Find target
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'sentinel');
+        
+        // Calculate forces
+        let forceX = 0, forceY = 0;
+        
+        if (target) {
+            // Orbit target while maintaining distance
+            ai.memory.orbitAngle += ai.memory.orbitSpeed * deltaTime * 1000;
             
-            // Look for threats
-            const threat = this.findNearestEnemy(entityId, transform, 'sentinel');
-            const player = this.findPlayer();
+            const orbitForce = this.traits.movement.orbit(
+                transform,
+                target.transform.x,
+                target.transform.y,
+                ai.memory.preferredDistance,
+                ai.memory.orbitAngle,
+                0.01
+            );
             
-            if (threat && threat.distance < 800) {
-                ai.state = 'defending';
-                ai.target = threat.id;
+            const distanceForce = this.traits.movement.maintainDistance(
+                transform,
+                target.transform,
+                ai.memory.preferredDistance,
+                50
+            );
+            
+            forceX += orbitForce.x + distanceForce.x;
+            forceY += orbitForce.y + distanceForce.y;
+            
+            // Tactical shooting with good prediction
+            if (this.traits.shooting.canShoot(entityId, target.distance)) {
+                // Coordinate with nearby sentinels
+                let shouldFire = true;
+                allies.forEach(allyId => {
+                    if (allyId === entityId) return;
+                    const allyWeapon = this.entityManager.getComponent(allyId, 'weapon');
+                    if (allyWeapon && allyWeapon.lastFireTime > -100 && allyWeapon.lastFireTime < 100) {
+                        shouldFire = false; // Stagger shots
+                    }
+                });
                 
-                // Call for backup
-                if (threat.distance < 400 && !ai.memory.calledBackup) {
-                    ai.memory.calledBackup = true;
-                    this.callForBackup(entityId, transform, allies);
+                if (shouldFire) {
+                    this.traits.shooting.aimAndShoot(entityId, target, 0.9); // 90% accuracy
                 }
-            } else if (player && this.getDistance(transform, player.transform) < 600) {
-                ai.state = 'defending';
-                ai.target = player.id;
+            }
+        } else {
+            // Patrol or maintain formation
+            let formationPosition = null;
+            
+            // Check if part of formation
+            for (const [leaderId, positions] of this.formations) {
+                if (positions.has(entityId)) {
+                    formationPosition = positions.get(entityId);
+                    break;
+                }
+            }
+            
+            if (formationPosition) {
+                const formationForce = this.traits.formation.moveToFormation(transform, formationPosition);
+                forceX += formationForce.x;
+                forceY += formationForce.y;
             } else {
-                ai.state = 'patrolling';
-                ai.target = null;
-                ai.memory.calledBackup = false;
+                // Solo patrol
+                ai.memory.orbitAngle += 0.0005;
+                const patrolForce = this.traits.movement.orbit(
+                    transform,
+                    ai.memory.guardPoint.x,
+                    ai.memory.guardPoint.y,
+                    ai.memory.orbitRadius,
+                    ai.memory.orbitAngle,
+                    0.005
+                );
+                forceX += patrolForce.x;
+                forceY += patrolForce.y;
             }
         }
         
-        // Execute behavior
-        let forceX = 0, forceY = 0;
+        // Avoid other sentinels
+        allies.forEach(allyId => {
+            if (allyId === entityId) return;
+            
+            const allyTransform = this.entityManager.getComponent(allyId, 'transform');
+            if (!allyTransform) return;
+            
+            const dist = this.traits.targeting.getDistance(transform, allyTransform);
+            if (dist < 150 && dist > 0) {
+                const dx = transform.x - allyTransform.x;
+                const dy = transform.y - allyTransform.y;
+                forceX += (dx / dist) * 0.006 / dist;
+                forceY += (dy / dist) * 0.006 / dist;
+            }
+        });
         
-        switch (ai.state) {
-            case 'defending':
-                if (ai.target) {
-                    const target = this.entityManager.getComponent(ai.target, 'transform');
-                    if (target) {
-                        const dx = target.x - transform.x;
-                        const dy = target.y - transform.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        // Maintain defensive distance
-                        const idealDist = 400;
-                        if (dist < idealDist - 50) {
-                            // Back away
-                            forceX -= (dx / dist) * 0.008;
-                            forceY -= (dy / dist) * 0.008;
-                        } else if (dist > idealDist + 50) {
-                            // Move closer
-                            forceX += (dx / dist) * 0.006;
-                            forceY += (dy / dist) * 0.006;
-                        }
-                        
-                        // Strafe around target
-                        const strafeAngle = Math.atan2(dy, dx) + Math.PI / 2;
-                        forceX += Math.cos(strafeAngle) * 0.004;
-                        forceY += Math.sin(strafeAngle) * 0.004;
-                        
-                        // Shoot tactically
-                        const weapon = this.entityManager.getComponent(entityId, 'weapon');
-                        if (weapon && weapon.lastFireTime <= 0 && dist < 500) {
-                            // Predict target movement
-                            const targetPhysics = this.entityManager.getComponent(ai.target, 'physics');
-                            if (targetPhysics) {
-                                const leadTime = dist / 15; // Projectile speed estimate
-                                const predictX = target.x + targetPhysics.velocity.x * leadTime;
-                                const predictY = target.y + targetPhysics.velocity.y * leadTime;
-                                const angle = Math.atan2(predictY - transform.y, predictX - transform.x);
-                                this.requestShoot(entityId, angle);
-                            }
-                        }
-                    }
-                }
-                break;
-                
-            case 'patrolling':
-                // Patrol around guard point
-                ai.memory.patrolAngle += 0.001;
-                const patrolX = ai.memory.guardPoint.x + Math.cos(ai.memory.patrolAngle) * ai.memory.patrolRadius;
-                const patrolY = ai.memory.guardPoint.y + Math.sin(ai.memory.patrolAngle) * ai.memory.patrolRadius;
-                
-                const dx = patrolX - transform.x;
-                const dy = patrolY - transform.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist > 50) {
-                    forceX += (dx / dist) * 0.005;
-                    forceY += (dy / dist) * 0.005;
-                }
-                break;
-        }
+        // Gravity avoidance
+        const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 1.0);
+        forceX += gravityAvoidance.x;
+        forceY += gravityAvoidance.y;
         
         // Apply forces
         this.applyForce(entityId, forceX, forceY);
@@ -419,33 +852,10 @@ class SentinelBehavior extends BaseBehavior {
         physics.maxSpeed = 5;
         physics.damping = 0.995;
     }
-    
-    callForBackup(callerId, callerTransform, allies) {
-        // Alert nearby allies
-        allies.forEach(allyId => {
-            if (allyId === callerId) return;
-            
-            const allyTransform = this.entityManager.getComponent(allyId, 'transform');
-            const allyAI = this.entityManager.getComponent(allyId, 'ai');
-            
-            if (!allyTransform || !allyAI) return;
-            
-            const dist = this.getDistance(callerTransform, allyTransform);
-            if (dist < 800) {
-                // Alert ally
-                allyAI.state = 'defending';
-                allyAI.memory.backupTarget = { x: callerTransform.x, y: callerTransform.y };
-            }
-        });
-    }
 }
 
-// Phantom behavior - hit and run tactics
+// Phantom behavior - hit and run with dash mechanics
 class PhantomBehavior extends BaseBehavior {
-    constructor(eventBus, entityManager, scene) {
-        super(eventBus, entityManager, scene);
-    }
-    
     updateGroup(entities, deltaTime, playerId) {
         entities.forEach(entityId => {
             this.updateEntity(entityId, entities, deltaTime);
@@ -460,24 +870,28 @@ class PhantomBehavior extends BaseBehavior {
         if (!ai || !transform || !physics) return;
         
         // Initialize memory
-        if (!ai.memory.attackTimer) {
+        if (!ai.memory.dashCooldown) {
+            ai.memory.dashCooldown = 0;
+            ai.memory.isDashing = false;
+            ai.memory.dashDirection = null;
+            ai.memory.dashTimer = 0;
             ai.memory.attackTimer = 0;
             ai.memory.retreatTimer = 0;
-            ai.memory.phaseTimer = 0;
             ai.memory.isPhased = false;
+            ai.memory.phaseTimer = 0;
         }
         
         // Update timers
+        ai.memory.dashCooldown -= deltaTime * 1000;
         ai.memory.attackTimer -= deltaTime * 1000;
         ai.memory.retreatTimer -= deltaTime * 1000;
         ai.memory.phaseTimer -= deltaTime * 1000;
         
-        // Phase in/out ability
+        // Phase ability
         if (ai.memory.phaseTimer <= 0) {
             ai.memory.phaseTimer = 2000;
             ai.memory.isPhased = !ai.memory.isPhased;
             
-            // Emit phase change
             this.eventBus.emit('ENEMY_PHASE_CHANGE', {
                 entityId: entityId,
                 phased: ai.memory.isPhased,
@@ -485,146 +899,160 @@ class PhantomBehavior extends BaseBehavior {
             });
         }
         
-        // Update AI state
-        ai.decisionTimer -= deltaTime * 1000;
-        if (ai.decisionTimer <= 0) {
-            ai.decisionTimer = 750;
-            ai.aggressionLevel = 0.7;
-            ai.fearLevel = 0.4;
-            
-            // Find target
-            const enemy = this.findNearestEnemy(entityId, transform, 'phantom');
-            const player = this.findPlayer();
-            
-            let target = null;
-            if (player && this.getDistance(transform, player.transform) < 800) {
-                target = player;
-            } else if (enemy && enemy.distance < 600) {
-                target = { id: enemy.id, transform: enemy.transform };
-            }
-            
-            if (target) {
-                if (ai.memory.attackTimer <= 0 && ai.memory.retreatTimer <= 0) {
-                    ai.state = 'approaching';
-                    ai.target = target.id;
-                    ai.memory.attackTimer = 2000;
-                } else if (ai.memory.attackTimer > 0) {
-                    ai.state = 'attacking';
-                } else {
-                    ai.state = 'retreating';
-                }
-            } else {
-                ai.state = 'hunting';
-                ai.target = null;
+        // Find target
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'phantom');
+        
+        // Update dash state
+        if (ai.memory.isDashing) {
+            ai.memory.dashTimer -= deltaTime * 1000;
+            if (ai.memory.dashTimer <= 0) {
+                ai.memory.isDashing = false;
+                ai.memory.dashDirection = null;
             }
         }
         
-        // Execute behavior
+        // Dash mechanics - every 0.5 seconds
+        if (ai.memory.dashCooldown <= 0 && !ai.memory.isDashing && target) {
+            ai.memory.dashCooldown = 500;
+            
+            // Decide dash direction
+            let dashX = 0, dashY = 0;
+            
+            if (target.distance < 400 && target.distance > 150) {
+                // Flank dash
+                const angle = Math.atan2(target.transform.y - transform.y, target.transform.x - transform.x);
+                const flankAngle = angle + (Math.random() > 0.5 ? Math.PI/2 : -Math.PI/2);
+                dashX = Math.cos(flankAngle);
+                dashY = Math.sin(flankAngle);
+            } else if (target.distance < 150) {
+                // Escape dash
+                const angle = Math.atan2(transform.y - target.transform.y, transform.x - target.transform.x);
+                dashX = Math.cos(angle);
+                dashY = Math.sin(angle);
+            }
+            
+            if (dashX !== 0 || dashY !== 0) {
+                ai.memory.dashDirection = { x: dashX, y: dashY };
+                ai.memory.isDashing = true;
+                ai.memory.dashTimer = 150;
+                
+                this.eventBus.emit('PHANTOM_DASH', {
+                    entityId: entityId,
+                    x: transform.x,
+                    y: transform.y,
+                    direction: ai.memory.dashDirection
+                });
+            }
+        }
+        
+        // Calculate forces
         let forceX = 0, forceY = 0;
         
-        switch (ai.state) {
-            case 'approaching':
-            case 'attacking':
-                if (ai.target) {
-                    const target = this.entityManager.getComponent(ai.target, 'transform');
-                    if (target) {
-                        const dx = target.x - transform.x;
-                        const dy = target.y - transform.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        if (dist > 0) {
-                            // Fast approach
-                            forceX += (dx / dist) * 0.015;
-                            forceY += (dy / dist) * 0.015;
-                            
-                            // Shoot rapidly when close
-                            if (dist < 400) {
-                                const weapon = this.entityManager.getComponent(entityId, 'weapon');
-                                if (weapon && weapon.lastFireTime <= 0) {
-                                    const angle = Math.atan2(dy, dx);
-                                    this.requestShoot(entityId, angle);
-                                    
-                                    // Start retreat after shooting
-                                    if (ai.memory.attackTimer <= 1000) {
-                                        ai.memory.retreatTimer = 1500;
-                                        ai.state = 'retreating';
-                                    }
-                                }
-                            }
-                        }
+        if (ai.memory.isDashing && ai.memory.dashDirection) {
+            // Dash force
+            forceX = ai.memory.dashDirection.x * 0.08;
+            forceY = ai.memory.dashDirection.y * 0.08;
+        } else if (target) {
+            // Hit and run tactics
+            if (ai.memory.attackTimer <= 0 && ai.memory.retreatTimer <= 0) {
+                ai.memory.attackTimer = 2000;
+            }
+            
+            if (ai.memory.attackTimer > 0) {
+                // Approach with weaving
+                const approachForce = this.traits.movement.moveToward(
+                    transform,
+                    target.transform.x,
+                    target.transform.y,
+                    0.015
+                );
+                
+                const weaveAngle = Date.now() * 0.003;
+                const perpX = -approachForce.y;
+                const perpY = approachForce.x;
+                
+                forceX += approachForce.x + perpX * Math.sin(weaveAngle) * 0.005;
+                forceY += approachForce.y + perpY * Math.sin(weaveAngle) * 0.005;
+                
+                // Shoot when close
+                if (this.traits.shooting.canShoot(entityId, target.distance)) {
+                    this.traits.shooting.aimAndShoot(entityId, target, 0.85); // 85% accuracy
+                    
+                    if (ai.memory.attackTimer <= 1000) {
+                        ai.memory.retreatTimer = 1500;
+                        ai.memory.attackTimer = 0;
                     }
                 }
-                break;
+            } else if (ai.memory.retreatTimer > 0) {
+                // Retreat with zigzag
+                const dx = transform.x - target.transform.x;
+                const dy = transform.y - target.transform.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
                 
-            case 'retreating':
-                if (ai.target) {
-                    const target = this.entityManager.getComponent(ai.target, 'transform');
-                    if (target) {
-                        const dx = transform.x - target.x;
-                        const dy = transform.y - target.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        if (dist > 0) {
-                            // Fast retreat
-                            forceX += (dx / dist) * 0.018;
-                            forceY += (dy / dist) * 0.018;
-                        }
-                        
-                        // Reset attack timer when far enough
-                        if (dist > 600) {
-                            ai.memory.attackTimer = 0;
-                            ai.memory.retreatTimer = 0;
-                        }
-                    }
+                if (dist > 0) {
+                    const zigzagAngle = Date.now() * 0.004;
+                    const perpX = -dy / dist;
+                    const perpY = dx / dist;
+                    
+                    forceX += (dx / dist) * 0.018 + perpX * Math.sin(zigzagAngle) * 0.008;
+                    forceY += (dy / dist) * 0.018 + perpY * Math.sin(zigzagAngle) * 0.008;
                 }
-                break;
                 
-            case 'hunting':
-                // Erratic movement while hunting
-                if (!ai.memory.huntAngle) {
-                    ai.memory.huntAngle = Math.random() * Math.PI * 2;
+                if (target.distance > 600) {
+                    ai.memory.retreatTimer = 0;
                 }
-                ai.memory.huntAngle += (Math.random() - 0.5) * 0.3;
-                
-                forceX = Math.cos(ai.memory.huntAngle) * 0.008;
-                forceY = Math.sin(ai.memory.huntAngle) * 0.008;
-                break;
+            }
+        } else {
+            // Hunt with erratic movement
+            if (!ai.memory.huntAngle) {
+                ai.memory.huntAngle = Math.random() * Math.PI * 2;
+            }
+            ai.memory.huntAngle += (Math.random() - 0.5) * 0.3;
+            
+            forceX = Math.cos(ai.memory.huntAngle) * 0.008;
+            forceY = Math.sin(ai.memory.huntAngle) * 0.008;
         }
         
-        // Team up with nearby phantoms
-        let phantomCount = 0;
-        allies.forEach(allyId => {
-            if (allyId === entityId) return;
+        // Gravity avoidance with emergency dash
+        const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 1.2);
+        
+        if ((gravityAvoidance.x !== 0 || gravityAvoidance.y !== 0) && !ai.memory.isDashing && ai.memory.dashCooldown <= 0) {
+            // Check for emergency dash need
+            const strongestGravity = gravitySources.reduce((strongest, source) => {
+                const danger = source.type === 'vortex' ? 
+                    (source.eventHorizon + 100) / source.distance :
+                    (source.radius + 50) / source.distance;
+                return danger > strongest.danger ? { danger, source } : strongest;
+            }, { danger: 0, source: null });
             
-            const allyTransform = this.entityManager.getComponent(allyId, 'transform');
-            if (!allyTransform) return;
-            
-            const dist = this.getDistance(transform, allyTransform);
-            if (dist < 300 && dist > 100) {
-                phantomCount++;
-                // Slight attraction to stay in loose groups
-                const dx = allyTransform.x - transform.x;
-                const dy = allyTransform.y - transform.y;
-                forceX += (dx / dist) * 0.002;
-                forceY += (dy / dist) * 0.002;
+            if (strongestGravity.danger > 0.8) {
+                // Emergency dash
+                ai.memory.dashCooldown = 500;
+                const avoidLen = Math.sqrt(gravityAvoidance.x ** 2 + gravityAvoidance.y ** 2);
+                ai.memory.dashDirection = {
+                    x: gravityAvoidance.x / avoidLen,
+                    y: gravityAvoidance.y / avoidLen
+                };
+                ai.memory.isDashing = true;
+                ai.memory.dashTimer = 200;
             }
-        });
+        }
+        
+        forceX += gravityAvoidance.x;
+        forceY += gravityAvoidance.y;
         
         // Apply forces
         this.applyForce(entityId, forceX, forceY);
         
         // Update physics
-        physics.maxSpeed = ai.memory.isPhased ? 10 : 7;
-        physics.damping = 0.97;
+        physics.maxSpeed = ai.memory.isDashing ? 15 : (ai.memory.isPhased ? 10 : 7);
+        physics.damping = ai.memory.isDashing ? 0.99 : 0.97;
     }
 }
 
-// Titan behavior - fearless and powerful
+// Titan behavior - charging and slam attacks
 class TitanBehavior extends BaseBehavior {
-    constructor(eventBus, entityManager, scene) {
-        super(eventBus, entityManager, scene);
-    }
-    
     updateGroup(entities, deltaTime, playerId) {
         entities.forEach(entityId => {
             this.updateEntity(entityId, deltaTime);
@@ -641,124 +1069,174 @@ class TitanBehavior extends BaseBehavior {
         // Initialize memory
         if (!ai.memory.chargeTimer) {
             ai.memory.chargeTimer = 0;
-            ai.memory.shockwaveTimer = 0;
             ai.memory.rageLevel = 0;
+            ai.memory.chargeSpeed = 0;
+            ai.memory.chargeDirection = null;
+            ai.memory.chargeCooldown = 0;
+            ai.memory.slamCooldown = 0;
+            ai.memory.isCharging = false;
         }
         
         // Update timers
-        ai.memory.chargeTimer -= deltaTime * 1000;
-        ai.memory.shockwaveTimer -= deltaTime * 1000;
+        ai.memory.chargeCooldown -= deltaTime * 1000;
+        ai.memory.slamCooldown -= deltaTime * 1000;
         
-        // Update AI state
-        ai.decisionTimer -= deltaTime * 1000;
-        if (ai.decisionTimer <= 0) {
-            ai.decisionTimer = 1500;
-            ai.aggressionLevel = 1.0; // Maximum aggression
-            ai.fearLevel = 0; // Fearless
-            
-            // Find nearest target
-            const enemy = this.findNearestEnemy(entityId, transform, 'titan');
-            const player = this.findPlayer();
-            
-            let target = null;
-            let targetDist = Infinity;
-            
-            if (player) {
-                const dist = this.getDistance(transform, player.transform);
-                if (dist < targetDist) {
-                    target = player;
-                    targetDist = dist;
-                }
-            }
-            
-            if (enemy && enemy.distance < targetDist) {
-                target = { id: enemy.id, transform: enemy.transform };
-                targetDist = enemy.distance;
-            }
-            
-            if (target) {
-                ai.state = 'charging';
-                ai.target = target.id;
-                
-                // Increase rage when enemy is close
-                if (targetDist < 300) {
-                    ai.memory.rageLevel = Math.min(1, ai.memory.rageLevel + 0.1);
-                }
-            } else {
-                ai.state = 'seeking';
-                ai.memory.rageLevel = Math.max(0, ai.memory.rageLevel - 0.05);
-            }
+        // Find target with detection range limit
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'titan');
+        
+        // Update rage
+        if (target && target.distance < 300) {
+            ai.memory.rageLevel = Math.min(1, ai.memory.rageLevel + 0.1);
+        } else {
+            ai.memory.rageLevel = Math.max(0, ai.memory.rageLevel - 0.05);
         }
         
-        // Execute behavior
+        // Calculate forces
         let forceX = 0, forceY = 0;
         
-        switch (ai.state) {
-            case 'charging':
-                if (ai.target) {
-                    const target = this.entityManager.getComponent(ai.target, 'transform');
-                    if (target) {
-                        const dx = target.x - transform.x;
-                        const dy = target.y - transform.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        if (dist > 0) {
-                            // Fearless charge with rage boost
-                            const chargeForce = 0.025 * (1 + ai.memory.rageLevel);
-                            forceX += (dx / dist) * chargeForce;
-                            forceY += (dy / dist) * chargeForce;
-                            
-                            // Shockwave attack when very close
-                            if (dist < 200 && ai.memory.shockwaveTimer <= 0) {
-                                ai.memory.shockwaveTimer = 3000;
-                                
-                                // Create shockwave
-                                this.eventBus.emit('TITAN_SHOCKWAVE', {
-                                    entityId: entityId,
-                                    x: transform.x,
-                                    y: transform.y
-                                });
-                                
-                                // Screen shake for impact
-                                this.eventBus.emit('CAMERA_SHAKE', {
-                                    duration: 500,
-                                    intensity: 0.02
-                                });
-                            }
-                            
-                            // Powerful shots
-                            if (dist < 600) {
-                                const weapon = this.entityManager.getComponent(entityId, 'weapon');
-                                if (weapon && weapon.lastFireTime <= 0) {
-                                    // Charged shots
-                                    weapon.chargeTime = weapon.maxChargeTime;
-                                    const angle = Math.atan2(dy, dx);
-                                    this.requestShoot(entityId, angle);
-                                }
-                            }
-                        }
+        if (ai.memory.isCharging && ai.memory.chargeDirection) {
+            // Continue charge - no distance limit during charge
+            ai.memory.chargeSpeed = Math.min(ai.memory.chargeSpeed + 0.3, 15);
+            
+            // Very limited turning during charge
+            if (target) {
+                const targetDir = this.traits.movement.moveToward(
+                    transform,
+                    target.transform.x,
+                    target.transform.y,
+                    1.0
+                );
+                
+                // 5% course correction
+                ai.memory.chargeDirection.x = ai.memory.chargeDirection.x * 0.95 + targetDir.x * 0.05;
+                ai.memory.chargeDirection.y = ai.memory.chargeDirection.y * 0.95 + targetDir.y * 0.05;
+                
+                // Renormalize
+                const len = Math.sqrt(ai.memory.chargeDirection.x ** 2 + ai.memory.chargeDirection.y ** 2);
+                ai.memory.chargeDirection.x /= len;
+                ai.memory.chargeDirection.y /= len;
+            }
+            
+            // Apply charge force
+            forceX = ai.memory.chargeDirection.x * ai.memory.chargeSpeed * 0.05;
+            forceY = ai.memory.chargeDirection.y * ai.memory.chargeSpeed * 0.05;
+            
+            // Check for slam opportunity
+            if (target && target.distance < 200) {
+                // End charge and slam
+                ai.memory.isCharging = false;
+                ai.memory.chargeSpeed = 0;
+                ai.memory.chargeCooldown = 3000; // 3 second cooldown
+                
+                // Execute slam
+                this.eventBus.emit('TITAN_SHOCKWAVE', {
+                    entityId: entityId,
+                    x: transform.x,
+                    y: transform.y,
+                    radius: 300,
+                    damage: 50
+                });
+                
+                this.eventBus.emit('CAMERA_SHAKE', {
+                    duration: 800,
+                    intensity: 0.04
+                });
+            }
+        } else if (target) {
+            // Not charging - normal behavior
+            if (target.distance > 400 && ai.memory.chargeCooldown <= 0) {
+                // Start charge
+                ai.memory.isCharging = true;
+                ai.memory.chargeSpeed = 0;
+                ai.memory.chargeDirection = this.traits.movement.moveToward(
+                    transform,
+                    target.transform.x,
+                    target.transform.y,
+                    1.0
+                );
+            } else if (target.distance < 250 && ai.memory.slamCooldown <= 0) {
+                // Close range slam
+                ai.memory.slamCooldown = 3000;
+                
+                this.eventBus.emit('TITAN_SHOCKWAVE', {
+                    entityId: entityId,
+                    x: transform.x,
+                    y: transform.y,
+                    radius: 300,
+                    damage: 50
+                });
+                
+                this.eventBus.emit('CAMERA_SHAKE', {
+                    duration: 800,
+                    intensity: 0.04
+                });
+            } else {
+                // Normal advance
+                const moveForce = this.traits.movement.moveToward(
+                    transform,
+                    target.transform.x,
+                    target.transform.y,
+                    0.015 * (1 + ai.memory.rageLevel)
+                );
+                forceX += moveForce.x;
+                forceY += moveForce.y;
+                
+                // Powerful shots
+                if (this.traits.shooting.canShoot(entityId, target.distance)) {
+                    const weapon = this.entityManager.getComponent(entityId, 'weapon');
+                    if (weapon) {
+                        weapon.chargeTime = weapon.maxChargeTime; // Charged shots
                     }
+                    this.traits.shooting.aimAndShoot(entityId, target, 0.95); // 95% accuracy
                 }
-                break;
-                
-            case 'seeking':
-                // Aggressive wandering
-                if (!ai.memory.seekAngle) {
-                    ai.memory.seekAngle = Math.random() * Math.PI * 2;
-                }
-                ai.memory.seekAngle += (Math.random() - 0.5) * 0.1;
-                
-                forceX = Math.cos(ai.memory.seekAngle) * 0.01;
-                forceY = Math.sin(ai.memory.seekAngle) * 0.01;
-                break;
+            }
+        } else {
+            // No target - aggressive wandering
+            if (!ai.memory.seekAngle) {
+                ai.memory.seekAngle = Math.random() * Math.PI * 2;
+            }
+            ai.memory.seekAngle += (Math.random() - 0.5) * 0.1;
+            
+            forceX = Math.cos(ai.memory.seekAngle) * 0.01;
+            forceY = Math.sin(ai.memory.seekAngle) * 0.01;
+        }
+        
+        // Gravity avoidance - titans resist but fear vortexes
+        const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 0.7);
+        
+        // Check for vortex danger
+        const nearVortex = gravitySources.some(source => 
+            source.type === 'vortex' && source.distance < source.eventHorizon * 2
+        );
+        
+        if (nearVortex) {
+            // Emergency escape
+            forceX += gravityAvoidance.x * 2;
+            forceY += gravityAvoidance.y * 2;
+            // Cancel charge
+            if (ai.memory.isCharging) {
+                ai.memory.isCharging = false;
+                ai.memory.chargeSpeed = 0;
+                ai.memory.chargeCooldown = 1000;
+            }
+        } else {
+            // Normal gravity resistance
+            forceX += gravityAvoidance.x;
+            forceY += gravityAvoidance.y;
         }
         
         // Apply forces
         this.applyForce(entityId, forceX, forceY);
         
-        // Update physics - slow but unstoppable
-        physics.maxSpeed = 4 + ai.memory.rageLevel * 2;
-        physics.damping = 0.999;
+        // Update physics
+        if (ai.memory.isCharging) {
+            physics.maxSpeed = ai.memory.chargeSpeed;
+            physics.damping = 0.999;
+        } else {
+            physics.maxSpeed = 4 + ai.memory.rageLevel * 2;
+            physics.damping = 0.995;
+        }
         physics.mass = 30; // Heavy
     }
 }
