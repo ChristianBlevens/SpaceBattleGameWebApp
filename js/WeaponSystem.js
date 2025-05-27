@@ -12,10 +12,12 @@ class WeaponSystem {
     }
     
     init() {
-        // Get player ID from event
-        this.eventBus.emit('REQUEST_PLAYER_ID');
-        this.eventBus.on('PLAYER_ID_RESPONSE', (data) => {
-            this.playerId = data.playerId;
+        // Listen for player creation
+        this.eventBus.on('ENTITY_CREATED', (data) => {
+            if (data.type === 'player') {
+                this.playerId = data.id;
+                console.log('[WeaponSystem] Player ID set:', this.playerId);
+            }
         });
         
         // Listen for shooting events

@@ -71,6 +71,10 @@ class UIManager {
             this.updateChargeIndicator(data.percent);
         });
         
+        this.eventBus.on('UI_CHARGE_UPDATE', (data) => {
+            this.updateChargeIndicator(data.percent);
+        });
+        
         this.eventBus.on('UPGRADE_APPLIED', (data) => {
             this.updateUpgradeDisplay(data);
         });

@@ -243,7 +243,7 @@ class InputSystem {
             
             // Update charge UI
             const chargePercent = Math.min(100, (weapon.chargeTime / weapon.maxChargeTime) * 100);
-            UIManager.showChargeIndicator(chargePercent);
+            this.eventBus.emit('UI_CHARGE_UPDATE', { percent: chargePercent });
             
             // Emit charging event
             this.eventBus.emit('PLAYER_SHOOT', {
@@ -261,7 +261,7 @@ class InputSystem {
             // Reset charge
             weapon.charging = false;
             weapon.chargeTime = 0;
-            UIManager.showChargeIndicator(0);
+            this.eventBus.emit('UI_CHARGE_UPDATE', { percent: 0 });
         }
     }
     

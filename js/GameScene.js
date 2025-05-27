@@ -59,7 +59,7 @@ class GameScene extends Phaser.Scene {
         this.time.delayedCall(2000, () => {
             console.log('[GameScene] Starting wave 1');
             // Ensure wave state is clean before starting
-            gameState.update('waves.waveInProgress', false);
+            this.gameInitializer.gameState.update('waves.waveInProgress', false);
             waveSystem.startWave(1);
         });
         

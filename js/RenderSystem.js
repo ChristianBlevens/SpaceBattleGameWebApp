@@ -165,7 +165,7 @@ class RenderSystem {
             if (data.position && data.isCharged) {
                 // Add glow effect for charged projectiles
                 const sprite = this.scene.sprites.get(data.projectileId);
-                if (sprite) {
+                if (sprite && sprite.body) {
                     this.scene.tweens.add({
                         targets: sprite,
                         scale: { from: 1.5, to: 1.8 },

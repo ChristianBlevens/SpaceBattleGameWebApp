@@ -22,15 +22,13 @@ class PhysicsSystem {
     init(entityManager) {
         this.entityManager = entityManager;
         
-        // Listen for player ID updates
-        this.eventBus.on('PLAYER_RESULT', (data) => {
-            if (data.player && data.playerId) {
-                this.playerId = data.playerId;
+        // Listen for player creation
+        this.eventBus.on('ENTITY_CREATED', (data) => {
+            if (data.type === 'player') {
+                this.playerId = data.id;
+                console.log('[PhysicsSystem] Player ID set:', this.playerId);
             }
         });
-        
-        // Request player ID
-        this.eventBus.emit('GET_PLAYER', { requestId: 'physics_player' });
         
         // Listen for force application requests
         this.eventBus.on('FORCE_APPLIED', (data) => {
@@ -203,24 +201,31 @@ class PhysicsSystem {
             
             if (!transform || !physics || !sprite || !sprite.body) return;
             
-            // Update velocity from acceleration
-            physics.velocity.x += physics.acceleration.x * deltaTime;
-            physics.velocity.y += physics.acceleration.y * deltaTime;
-            
-            // Apply damping
-            physics.velocity.x *= physics.damping;
-            physics.velocity.y *= physics.damping;
-            
-            // Clamp to max velocity
-            const speed = Math.sqrt(physics.velocity.x ** 2 + physics.velocity.y ** 2);
-            if (speed > physics.maxSpeed) {
-                const scale = physics.maxSpeed / speed;
-                physics.velocity.x *= scale;
-                physics.velocity.y *= scale;
+            // For player entities, don't override velocity (let Matter.js handle it)
+            if (entityManager.getEntity(entityId).type === 'player') {
+                // Get current velocity from Matter.js body
+                physics.velocity.x = sprite.body.velocity.x;
+                physics.velocity.y = sprite.body.velocity.y;
+            } else {
+                // Update velocity from acceleration for non-player entities
+                physics.velocity.x += physics.acceleration.x * deltaTime;
+                physics.velocity.y += physics.acceleration.y * deltaTime;
+                
+                // Apply damping
+                physics.velocity.x *= physics.damping;
+                physics.velocity.y *= physics.damping;
+                
+                // Clamp to max velocity
+                const speed = Math.sqrt(physics.velocity.x ** 2 + physics.velocity.y ** 2);
+                if (speed > physics.maxSpeed) {
+                    const scale = physics.maxSpeed / speed;
+                    physics.velocity.x *= scale;
+                    physics.velocity.y *= scale;
+                }
+                
+                // Apply velocity to Matter.js body
+                sprite.setVelocity(physics.velocity.x, physics.velocity.y);
             }
-            
-            // Apply velocity to Matter.js body
-            sprite.setVelocity(physics.velocity.x, physics.velocity.y);
             
             // Reset acceleration for next frame
             physics.acceleration.x = 0;

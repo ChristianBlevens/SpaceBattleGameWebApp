@@ -50,6 +50,12 @@ class EntityFactory {
             trailConfig: { points: [], maxLength: 20, color: 0x00ffff, width: 3, alpha: 0.5, fadeRate: 0.05 }
         });
         
+        // Emit entity created event
+        this.eventBus.emit('ENTITY_CREATED', {
+            id: playerId,
+            type: 'player'
+        });
+        
         return playerId;
     }
     
