@@ -1133,38 +1133,28 @@ class RenderSystem {
         // Clear previous markers
         this.markerGraphics.clear();
         
-        // Only show markers when shift is held
+        // Only show markers when C is held
         if (!this.scene.inputSystem || !this.scene.inputSystem.isShiftHeld()) {
             return;
         }
         
-        // Get player position
-        const playerSprite = this.scene.sprites.get(this.playerId);
-        if (!playerSprite) return;
-        
-        const playerX = playerSprite.x;
-        const playerY = playerSprite.y;
-        
-        // Get camera viewport
+        // Get camera info
         const camera = this.scene.cameras.main;
-        const viewLeft = camera.worldView.x;
-        const viewRight = camera.worldView.x + camera.worldView.width;
-        const viewTop = camera.worldView.y;
-        const viewBottom = camera.worldView.y + camera.worldView.height;
+        const screenWidth = camera.width;
+        const screenHeight = camera.height;
+        const screenCenterX = screenWidth / 2;
+        const screenCenterY = screenHeight / 2;
         
         // Screen edge padding
-        const padding = 30;
-        const markerSize = 15;
+        const padding = 40;
+        const markerSize = 20;
         
-        // Query all enemies
-        const enemies = this.entityManager.query('enemy', 'transform');
+        // Query all enemies by type
+        const enemies = this.entityManager.getEntitiesByType('enemy');
         
         enemies.forEach(enemyId => {
             const enemySprite = this.scene.sprites.get(enemyId);
             if (!enemySprite || !enemySprite.active) return;
-            
-            const enemyX = enemySprite.x;
-            const enemyY = enemySprite.y;
             
             // Get enemy faction for color
             const faction = this.entityManager.getComponent(enemyId, 'faction');
@@ -1176,61 +1166,56 @@ class RenderSystem {
             };
             const color = factionColors[faction?.name] || 0xffffff;
             
-            // Check if enemy is off-screen
-            if (enemyX < viewLeft || enemyX > viewRight || enemyY < viewTop || enemyY > viewBottom) {
-                // Calculate direction to enemy
-                const dx = enemyX - playerX;
-                const dy = enemyY - playerY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
+            // Check if enemy is visible in camera viewport
+            const inViewport = camera.worldView.contains(enemySprite.x, enemySprite.y);
+            
+            if (!inViewport) {
+                // Enemy is off-screen, calculate indicator position
+                
+                // Get camera center in world coordinates
+                const cameraCenterX = camera.worldView.centerX;
+                const cameraCenterY = camera.worldView.centerY;
+                
+                // Calculate direction from camera center to enemy
+                const dx = enemySprite.x - cameraCenterX;
+                const dy = enemySprite.y - cameraCenterY;
                 const angle = Math.atan2(dy, dx);
                 
-                // Calculate marker position on screen edge
-                let markerX, markerY;
+                // Calculate the maximum distance from center to edge considering padding
+                const effectiveWidth = (screenWidth - 2 * padding) / camera.zoom;
+                const effectiveHeight = (screenHeight - 2 * padding) / camera.zoom;
                 
-                // Convert world position to screen position
-                const screenCenterX = camera.centerX;
-                const screenCenterY = camera.centerY;
-                const screenWidth = camera.width;
-                const screenHeight = camera.height;
-                
-                // Calculate intersection with screen edge
-                const cos = Math.cos(angle);
-                const sin = Math.sin(angle);
-                const halfWidth = (screenWidth / 2 - padding) / camera.zoom;
-                const halfHeight = (screenHeight / 2 - padding) / camera.zoom;
-                
-                // Find intersection point
+                // Find intersection with viewport edge
                 let t = Infinity;
                 
-                // Check intersection with each edge
-                if (cos > 0) { // Right edge
-                    t = Math.min(t, halfWidth / cos);
-                } else if (cos < 0) { // Left edge
-                    t = Math.min(t, -halfWidth / cos);
+                // Check horizontal edges
+                if (Math.abs(dx) > 0.001) {
+                    const tx = effectiveWidth / 2 / Math.abs(dx);
+                    t = Math.min(t, tx);
                 }
                 
-                if (sin > 0) { // Bottom edge
-                    t = Math.min(t, halfHeight / sin);
-                } else if (sin < 0) { // Top edge
-                    t = Math.min(t, -halfHeight / sin);
+                // Check vertical edges
+                if (Math.abs(dy) > 0.001) {
+                    const ty = effectiveHeight / 2 / Math.abs(dy);
+                    t = Math.min(t, ty);
                 }
                 
-                // Calculate marker world position
-                markerX = playerX + cos * t;
-                markerY = playerY + sin * t;
+                // Calculate indicator position in world coordinates
+                const indicatorX = cameraCenterX + dx * t;
+                const indicatorY = cameraCenterY + dy * t;
                 
                 // Draw arrow marker
-                this.markerGraphics.lineStyle(2, color, 0.8);
-                this.markerGraphics.fillStyle(color, 0.6);
+                this.markerGraphics.lineStyle(3, color, 0.9);
+                this.markerGraphics.fillStyle(color, 0.7);
                 
                 // Create arrow shape pointing towards enemy
                 const arrowPoints = [
-                    markerX + Math.cos(angle) * markerSize,
-                    markerY + Math.sin(angle) * markerSize,
-                    markerX + Math.cos(angle - 2.5) * markerSize * 0.7,
-                    markerY + Math.sin(angle - 2.5) * markerSize * 0.7,
-                    markerX + Math.cos(angle + 2.5) * markerSize * 0.7,
-                    markerY + Math.sin(angle + 2.5) * markerSize * 0.7
+                    indicatorX + Math.cos(angle) * markerSize,
+                    indicatorY + Math.sin(angle) * markerSize,
+                    indicatorX + Math.cos(angle - 2.5) * markerSize * 0.7,
+                    indicatorY + Math.sin(angle - 2.5) * markerSize * 0.7,
+                    indicatorX + Math.cos(angle + 2.5) * markerSize * 0.7,
+                    indicatorY + Math.sin(angle + 2.5) * markerSize * 0.7
                 ];
                 
                 this.markerGraphics.fillTriangle(
@@ -1239,38 +1224,45 @@ class RenderSystem {
                     arrowPoints[4], arrowPoints[5]
                 );
                 
-                // Add distance indicator if enemy is far
-                if (distance > 2000) {
-                    // Add pulsing effect for distant enemies
+                // Add outer circle for visibility
+                this.markerGraphics.lineStyle(2, 0x000000, 0.8);
+                this.markerGraphics.strokeCircle(indicatorX, indicatorY, markerSize * 1.2);
+                
+                // Calculate distance
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // Add pulsing effect for very far enemies
+                if (distance > 3000) {
                     const pulse = Math.sin(Date.now() * 0.003) * 0.3 + 0.7;
                     this.markerGraphics.lineStyle(3, color, pulse);
-                    this.markerGraphics.strokeCircle(markerX, markerY, markerSize * 1.5);
+                    this.markerGraphics.strokeCircle(indicatorX, indicatorY, markerSize * 1.8);
                 }
             } else {
                 // Enemy is on-screen - draw triangle above them
-                const markerOffset = 40; // Distance above enemy
+                const markerOffset = 50;
                 
                 this.markerGraphics.lineStyle(2, color, 0.8);
                 this.markerGraphics.fillStyle(color, 0.6);
                 
                 // Draw downward-pointing triangle
-                const triangleSize = 12;
+                const triangleSize = 15;
                 this.markerGraphics.fillTriangle(
-                    enemyX, enemyY - markerOffset - triangleSize,
-                    enemyX - triangleSize * 0.7, enemyY - markerOffset,
-                    enemyX + triangleSize * 0.7, enemyY - markerOffset
+                    enemySprite.x, enemySprite.y - markerOffset - triangleSize,
+                    enemySprite.x - triangleSize * 0.7, enemySprite.y - markerOffset,
+                    enemySprite.x + triangleSize * 0.7, enemySprite.y - markerOffset
                 );
                 
-                // Add outline for visibility
-                this.markerGraphics.lineStyle(1, 0x000000, 0.5);
+                // Add outline
+                this.markerGraphics.lineStyle(2, 0x000000, 0.5);
                 this.markerGraphics.strokeTriangle(
-                    enemyX, enemyY - markerOffset - triangleSize,
-                    enemyX - triangleSize * 0.7, enemyY - markerOffset,
-                    enemyX + triangleSize * 0.7, enemyY - markerOffset
+                    enemySprite.x, enemySprite.y - markerOffset - triangleSize,
+                    enemySprite.x - triangleSize * 0.7, enemySprite.y - markerOffset,
+                    enemySprite.x + triangleSize * 0.7, enemySprite.y - markerOffset
                 );
             }
         });
     }
+    
     
     // ===== ENVIRONMENT CREATION =====
     

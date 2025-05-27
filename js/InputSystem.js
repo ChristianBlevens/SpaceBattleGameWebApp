@@ -30,7 +30,6 @@ class InputSystem {
         
         this.setupKeyboard();
         this.setupMouse();
-        this.setupPointerLock();
         
         if (this.scene.sys.game.device.input.touch) {
             this.setupTouch();
@@ -44,6 +43,7 @@ class InputSystem {
             left: Phaser.Input.Keyboard.KeyCodes.A,
             right: Phaser.Input.Keyboard.KeyCodes.D,
             boost: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+            markers: Phaser.Input.Keyboard.KeyCodes.C,
             dash: Phaser.Input.Keyboard.KeyCodes.SPACE,
             pause: Phaser.Input.Keyboard.KeyCodes.ESC,
             pauseKey: Phaser.Input.Keyboard.KeyCodes.P,
@@ -53,23 +53,29 @@ class InputSystem {
             ability3: Phaser.Input.Keyboard.KeyCodes.THREE
         });
         
-        // ESC handler - exit pointer lock instead of pause
+        // ESC handler - pause game
         this.keys.pause.on('down', () => {
-            if (this.scene.input.isLocked) {
-                this.scene.input.releasePointerLock();
-            } else {
-                // Only pause if not in pointer lock mode
-                const paused = !this.gameState.get('game.paused');
-                this.gameState.update('game.paused', paused);
-                this.eventBus.emit('GAME_PAUSE', { paused });
-            }
-        });
-        
-        // P key for pause
-        this.keys.pauseKey.on('down', () => {
             const paused = !this.gameState.get('game.paused');
             this.gameState.update('game.paused', paused);
             this.eventBus.emit('GAME_PAUSE', { paused });
+        });
+        
+        // P key for killing all enemies (testing)
+        this.keys.pauseKey.on('down', () => {
+            // Kill all enemies for testing
+            const entities = this.entityManager.getEntitiesWithComponent('ai');
+            entities.forEach(entityId => {
+                const ai = this.entityManager.getComponent(entityId, 'ai');
+                if (ai && ai.type !== 'player') {
+                    // Emit death event for each enemy
+                    this.eventBus.emit('ENTITY_DEATH', { 
+                        entityId: entityId,
+                        killedBy: this.playerId,
+                        position: this.entityManager.getComponent(entityId, 'physics')
+                    });
+                }
+            });
+            console.log('[InputSystem] Killed all enemies via P key');
         });
         
         // Debug toggle
@@ -97,7 +103,7 @@ class InputSystem {
     }
     
     isShiftHeld() {
-        return this.keys.boost.isDown;
+        return this.keys && this.keys.markers && this.keys.markers.isDown;
     }
     
     setupMouse() {
@@ -120,44 +126,6 @@ class InputSystem {
         });
     }
     
-    setupPointerLock() {
-        // Request pointer lock when clicking on game
-        this.scene.input.on('pointerdown', () => {
-            if (!this.scene.input.isLocked) {
-                this.scene.input.requestPointerLock();
-            }
-        });
-        
-        // Handle pointer lock change
-        this.scene.input.on('pointerlockchange', (event) => {
-            if (this.scene.input.isLocked) {
-                console.log('[InputSystem] Pointer locked');
-                // Disable context menu
-                this.scene.input.disableContextMenu();
-            } else {
-                console.log('[InputSystem] Pointer released');
-            }
-        });
-        
-        // Prevent default browser behaviors
-        document.addEventListener('contextmenu', (e) => e.preventDefault());
-        
-        // Disable text selection when game is active
-        const gameContainer = document.getElementById('game-container');
-        if (gameContainer) {
-            gameContainer.style.userSelect = 'none';
-            gameContainer.style.webkitUserSelect = 'none';
-            gameContainer.style.mozUserSelect = 'none';
-            gameContainer.style.msUserSelect = 'none';
-        }
-        
-        // Disable page scrolling with arrow keys and space
-        window.addEventListener('keydown', (e) => {
-            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
-                e.preventDefault();
-            }
-        });
-    }
     
     setupTouch() {
         // Virtual joystick
@@ -460,9 +428,6 @@ class InputSystem {
         return this.isShooting;
     }
     
-    isShiftHeld() {
-        return this.keys && this.keys.boost.isDown;
-    }
 }
 
 // InputSystem will be instantiated by GameInitializer

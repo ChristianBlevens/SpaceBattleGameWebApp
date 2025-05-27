@@ -257,7 +257,12 @@ class MenuScene extends Phaser.Scene {
                 padding: { x: 10, y: 10 }
             });
             menuItem.setOrigin(0.5);
-            menuItem.setInteractive({ useHandCursor: !option.disabled });
+            menuItem.setInteractive({ 
+                useHandCursor: !option.disabled,
+                pixelPerfect: false,
+                hitArea: new Phaser.Geom.Rectangle(-100, -20, menuItem.width + 200, menuItem.height + 40),
+                hitAreaCallback: Phaser.Geom.Rectangle.Contains
+            });
             menuItem.setAlpha(0);
             menuItem.setScale(0.8);
             
@@ -286,7 +291,17 @@ class MenuScene extends Phaser.Scene {
                 
                 menuItem.on('pointerdown', () => {
                     if (!this.menuReady) return;
+                    
+                    // Prevent multiple activations
+                    if (this.activating) return;
+                    this.activating = true;
+                    
                     this.activateMenuItem(index);
+                    
+                    // Reset activation flag after a short delay
+                    this.time.delayedCall(500, () => {
+                        this.activating = false;
+                    });
                 });
             }
             

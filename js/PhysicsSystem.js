@@ -20,7 +20,7 @@ class PhysicsSystem {
         
         // Catastrophe wandering properties
         this.catastropheWanderAngle = Math.random() * Math.PI * 2;
-        this.catastropheWanderSpeed = 4500;  // Even faster wandering
+        this.catastropheWanderSpeed = 150;  // Pixels per second
         this.catastropheWanderTurnRate = 5.0;  // Much more erratic movement
         this.catastropheId = null;
         
@@ -464,7 +464,7 @@ class PhysicsSystem {
         // Update wander angle with random turns
         this.catastropheWanderAngle += (Math.random() - 0.5) * this.catastropheWanderTurnRate * deltaTime;
         
-        // Calculate velocity
+        // Calculate velocity (no deltaTime scaling needed for setVelocity)
         const vx = Math.cos(this.catastropheWanderAngle) * this.catastropheWanderSpeed;
         const vy = Math.sin(this.catastropheWanderAngle) * this.catastropheWanderSpeed;
         
