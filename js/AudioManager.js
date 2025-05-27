@@ -9,9 +9,6 @@ class AudioManager {
         this.muted = false;
         this.musicVolume = 0.3;
         this.effectsVolume = 0.5;
-        
-        // Initialize on construction
-        this.init();
     }
     
     init() {
@@ -32,7 +29,8 @@ class AudioManager {
         });
         
         this.eventBus.on('AUDIO_PLAY_MUSIC', (data) => {
-            this.playMusic(data.track);
+            const track = data && data.track ? data.track : 'gameMusic';
+            this.playMusic(track);
         });
         
         this.eventBus.on('AUDIO_STOP_MUSIC', () => {
@@ -143,3 +141,4 @@ class AudioManager {
 }
 
 // AudioManager will be instantiated by GameInitializer
+window.AudioManager = AudioManager;

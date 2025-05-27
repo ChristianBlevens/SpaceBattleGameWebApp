@@ -43,6 +43,9 @@ class GameScene extends Phaser.Scene {
         // Create environment through RenderSystem
         renderSystem.createEnvironment();
         
+        // Set scene for entity factory
+        entityFactory.setScene(this);
+        
         // Create initial entities through factory
         this.createInitialEntities(entityFactory);
         
@@ -54,6 +57,9 @@ class GameScene extends Phaser.Scene {
         
         // Start first wave after delay
         this.time.delayedCall(2000, () => {
+            console.log('[GameScene] Starting wave 1');
+            // Ensure wave state is clean before starting
+            gameState.update('waves.waveInProgress', false);
             waveSystem.startWave(1);
         });
         
@@ -87,28 +93,103 @@ class GameScene extends Phaser.Scene {
         graphics.generateTexture('player', 32, 16);
         graphics.clear();
         
-        // Enemy ship
+        // Enemy ship (generic)
         graphics.fillStyle(0xff0066, 1);
         graphics.fillTriangle(0, 0, 32, 8, 0, 16);
         graphics.generateTexture('enemy', 32, 16);
         graphics.clear();
         
-        // Projectile
+        // Faction-specific enemy textures
+        // Swarm enemy
+        graphics.fillStyle(0xff6666, 1);
+        graphics.fillTriangle(0, 0, 24, 6, 0, 12);
+        graphics.generateTexture('enemy-swarm', 24, 12);
+        graphics.clear();
+        
+        // Sentinel enemy
+        graphics.fillStyle(0x66ff66, 1);
+        graphics.fillRect(0, 0, 28, 20);
+        graphics.generateTexture('enemy-sentinel', 28, 20);
+        graphics.clear();
+        
+        // Phantom enemy
+        graphics.fillStyle(0x9966ff, 1);
+        graphics.fillTriangle(0, 8, 16, 0, 32, 8);
+        graphics.fillTriangle(0, 8, 32, 8, 16, 16);
+        graphics.generateTexture('enemy-phantom', 32, 16);
+        graphics.clear();
+        
+        // Titan enemy
+        graphics.fillStyle(0xff9966, 1);
+        graphics.fillRect(0, 0, 40, 32);
+        graphics.fillCircle(20, 16, 12);
+        graphics.generateTexture('enemy-titan', 40, 32);
+        graphics.clear();
+        
+        // Projectiles
+        // Basic projectile
         graphics.fillStyle(0xffff00, 1);
         graphics.fillCircle(4, 4, 4);
         graphics.generateTexture('projectile', 8, 8);
+        graphics.generateTexture('projectile-basic', 8, 8);
         graphics.clear();
         
-        // Powerup
+        // Enemy projectile
+        graphics.fillStyle(0xff6666, 1);
+        graphics.fillCircle(4, 4, 4);
+        graphics.generateTexture('projectile-enemy', 8, 8);
+        graphics.clear();
+        
+        // Charged projectile
+        graphics.fillStyle(0x00ffff, 1);
+        graphics.fillCircle(6, 6, 6);
+        graphics.generateTexture('projectile-charged', 12, 12);
+        graphics.clear();
+        
+        // Powerups
+        // Health powerup
+        graphics.fillStyle(0xff0000, 1);
+        graphics.fillRect(6, 0, 4, 16);
+        graphics.fillRect(0, 6, 16, 4);
+        graphics.generateTexture('powerup-health', 16, 16);
+        graphics.clear();
+        
+        // Energy powerup
+        graphics.fillStyle(0x00ffff, 1);
+        graphics.fillTriangle(8, 0, 0, 16, 16, 16);
+        graphics.generateTexture('powerup-energy', 16, 16);
+        graphics.clear();
+        
+        // Credits powerup
+        graphics.fillStyle(0xffff00, 1);
+        graphics.fillCircle(8, 8, 8);
+        graphics.generateTexture('powerup-credits', 16, 16);
+        graphics.clear();
+        
+        // Generic powerup
         graphics.fillStyle(0x00ff00, 1);
         graphics.fillRect(0, 0, 16, 16);
         graphics.generateTexture('powerup', 16, 16);
         graphics.clear();
         
-        // Planet
+        // Planets
+        // Small planet
+        graphics.fillStyle(0x8888ff, 1);
+        graphics.fillCircle(20, 20, 20);
+        graphics.generateTexture('planet-small', 40, 40);
+        graphics.clear();
+        
+        // Medium planet
         graphics.fillStyle(0x6666ff, 1);
         graphics.fillCircle(32, 32, 32);
         graphics.generateTexture('planet', 64, 64);
+        graphics.generateTexture('planet-medium', 64, 64);
+        graphics.clear();
+        
+        // Large planet
+        graphics.fillStyle(0x4444ff, 1);
+        graphics.fillCircle(40, 40, 40);
+        graphics.generateTexture('planet-large', 80, 80);
         graphics.clear();
         
         // Star
@@ -125,8 +206,9 @@ class GameScene extends Phaser.Scene {
         const startY = GameConfig.world.height * 0.5;
         const playerId = entityFactory.createPlayer(startX, startY);
         
-        // Store player ID in game state
+        // Store player ID in game state and scene
         this.gameInitializer.gameState.setPlayerId(playerId);
+        this.player = playerId;
         
         // Create orbital systems
         const orbitalSystems = [
@@ -145,7 +227,8 @@ class GameScene extends Phaser.Scene {
         for (let i = 0; i < 20; i++) {
             const x = Phaser.Math.Between(1000, GameConfig.world.width - 1000);
             const y = Phaser.Math.Between(1000, GameConfig.world.height - 1000);
-            const size = Phaser.Math.Pick(['small', 'medium']);
+            const sizes = ['small', 'medium'];
+			const size = sizes[Math.floor(Math.random() * sizes.length)];
             
             const planet = entityFactory.createPlanet(x, y, size);
             
@@ -252,6 +335,7 @@ class GameScene extends Phaser.Scene {
             repeat: -1,
             callback: () => {
                 if (!gameState.get('game.paused')) {
+                    const waveInProgress = gameState.get('waves.waveInProgress');
                     const state = {
                         player: {
                             health: gameState.get('player.health'),
@@ -270,12 +354,18 @@ class GameScene extends Phaser.Scene {
                         },
                         mission: {
                             currentWave: gameState.get('waves.current'),
-                            waveInProgress: gameState.get('waves.waveInProgress'),
+                            waveInProgress: waveInProgress,
                             enemiesDefeated: gameState.get('waves.totalEnemies') - gameState.get('waves.enemiesRemaining'),
                             totalEnemies: gameState.get('waves.totalEnemies')
                         },
                         upgrades: abilitySystem.getAllUpgradeInfo()
                     };
+                    
+                    // Debug log wave state changes
+                    if (this.lastWaveInProgress !== waveInProgress) {
+                        console.log('[GameScene] Wave state changed:', this.lastWaveInProgress, '->', waveInProgress);
+                        this.lastWaveInProgress = waveInProgress;
+                    }
                     
                     window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
                 }

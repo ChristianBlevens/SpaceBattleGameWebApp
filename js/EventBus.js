@@ -329,6 +329,10 @@ const GameEvents = {
 // Export classes for use by GameInitializer
 // EventBus will be instantiated by GameInitializer, not as a singleton
 
+// Export to window
+window.EventBus = EventBus;
+window.GameEvents = GameEvents;
+
 // Optional: Create a default instance for debugging in console
 if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     window._debugEventBus = new EventBus();

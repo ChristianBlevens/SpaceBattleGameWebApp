@@ -41,22 +41,25 @@
     
     <!-- Core Systems -->
 	<script src="js/EventBus.js"></script>
+	<script src="js/Components.js"></script>
 	<script src="js/EntityManager.js"></script>
 	<script src="js/GameState.js"></script>
 
 	<!-- Game Systems -->
 	<script src="js/PhysicsSystem.js"></script>
-	<script src="js/AISystem.js"></script>
+	<script src="js/AiSystem.js"></script>
 	<script src="js/WeaponSystem.js"></script>
 	<script src="js/CombatSystem.js"></script>
 	<script src="js/WaveSystem.js"></script>
 	<script src="js/AbilitySystem.js"></script>
 
 	<!-- Utilities -->
+	<script src="js/GameInitializer.js"></script>
 	<script src="js/EntityFactory.js"></script>
 	<script src="js/AudioManager.js"></script>
 	<script src="js/RenderSystem.js"></script>
 	<script src="js/InputSystem.js"></script>
+	<script src="js/UIManager.js"></script>
 
 	<!-- Scenes -->
 	<script src="js/BootScene.js"></script>
@@ -234,15 +237,15 @@
             </template>
         </div>
         
-        <!-- Wave Indicator -->
-        <div class="wave-indicator" x-show="waveInProgress">
+        <!-- Wave Indicator (commented out as it's redundant with in-game announcements) -->
+        <!-- <div class="wave-indicator" x-show="waveInProgress">
             <h2 class="wave-title animate__animated animate__pulse animate__infinite">
                 WAVE <span x-text="currentWave"></span>
             </h2>
             <div class="wave-progress">
                 <span x-text="`${enemiesDefeated}/${totalEnemies} Enemies`"></span>
             </div>
-        </div>
+        </div> -->
         
         <!-- Game Over Screen -->
         <div class="game-over-overlay" x-show="gameOver" x-transition>

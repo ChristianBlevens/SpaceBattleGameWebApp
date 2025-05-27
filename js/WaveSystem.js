@@ -54,10 +54,24 @@ class WaveSystem {
         this.gameState.update('waves.totalEnemies', waveConfig.totalEnemies);
         this.gameState.update('waves.spawnsRemaining', waveConfig.totalEnemies);
         
+        console.log('[WaveSystem] Wave started:', {
+            waveNumber,
+            totalEnemies: waveConfig.totalEnemies,
+            waveInProgress: true
+        });
+        
         // Store wave config
         this.waveConfigs[waveNumber] = waveConfig;
         this.spawnsRemaining = waveConfig.totalEnemies;
         this.nextSpawnTime = 0;
+        
+        console.log('[WaveSystem] Wave config generated:', {
+            wave: waveNumber,
+            totalEnemies: waveConfig.totalEnemies,
+            spawnsRemaining: this.spawnsRemaining,
+            spawnDelay: waveConfig.spawnDelay,
+            spawns: waveConfig.spawns
+        });
         
         // Emit wave announcement event
         this.eventBus.emit('WAVE_ANNOUNCED', {
@@ -158,10 +172,15 @@ class WaveSystem {
     }
     
     update(deltaTime) {
-        if (!this.gameState.get('waves.waveInProgress')) return;
+        if (!this.gameState.get('waves.waveInProgress')) {
+            return;
+        }
         
         const waveConfig = this.waveConfigs[this.currentWave];
-        if (!waveConfig) return;
+        if (!waveConfig) {
+            console.log('[WaveSystem] update: No wave config for wave', this.currentWave);
+            return;
+        }
         
         // Update spawn timer
         this.spawnTimer += deltaTime * 1000;
@@ -170,6 +189,7 @@ class WaveSystem {
             // Spawn next enemy
             const spawnInfo = waveConfig.spawns[waveConfig.totalEnemies - this.spawnsRemaining];
             if (spawnInfo) {
+                console.log('[WaveSystem] Spawning enemy:', spawnInfo);
                 this.spawnEnemy(spawnInfo);
                 this.spawnsRemaining--;
                 this.gameState.update('waves.spawnsRemaining', this.spawnsRemaining);
@@ -181,14 +201,21 @@ class WaveSystem {
     }
     
     spawnEnemy(spawnInfo) {
+        console.log('[WaveSystem] spawnEnemy called with:', spawnInfo);
+        
         // Choose random spawn point
-        const spawnPoint = Phaser.Math.Pick(this.spawnPoints);
+        const spawnPoint = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
         const x = spawnPoint.x();
         const y = spawnPoint.y();
         
+        console.log('[WaveSystem] Spawn position:', { x, y });
+        
         // Get faction config
         const factionConfig = GameConfig.factions[spawnInfo.faction];
-        if (!factionConfig) return;
+        if (!factionConfig) {
+            console.error('[WaveSystem] No faction config for:', spawnInfo.faction);
+            return;
+        }
         
         // Calculate initial velocity toward center
         const centerX = GameConfig.world.centerX;
@@ -201,8 +228,12 @@ class WaveSystem {
             y: Math.sin(angle) * speed
         };
         
+        console.log('[WaveSystem] Creating enemy with velocity:', initialVelocity);
+        
         // Create enemy using factory
         const enemyId = this.entityFactory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
+        
+        console.log('[WaveSystem] Enemy created with ID:', enemyId);
         
         // Emit spawn event for other systems
         this.eventBus.emit('ENEMY_SPAWNED', {
@@ -235,3 +266,5 @@ class WaveSystem {
         };
     }
 }
+
+window.WaveSystem = WaveSystem;

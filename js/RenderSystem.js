@@ -1104,7 +1104,8 @@ class RenderSystem {
             const x = Phaser.Math.Between(0, GameConfig.world.width);
             const y = Phaser.Math.Between(0, GameConfig.world.height);
             const radius = Phaser.Math.Between(300, 600);
-            const color = Phaser.Math.Pick([0x660066, 0x006666, 0x666600]);
+            const colors = [0x660066, 0x006666, 0x666600];
+            const color = colors[Math.floor(Math.random() * colors.length)];
             
             const nebula = this.scene.add.graphics();
             nebula.fillStyle(color, 0.05);
@@ -1232,7 +1233,7 @@ class RenderSystem {
         graphics.destroy();
     }
     
-    static createGlowTexture(graphics, key, radius, color, glowColor) {
+    createGlowTexture(graphics, key, radius, color, glowColor) {
         graphics.clear();
         
         // Outer glow
@@ -1254,7 +1255,7 @@ class RenderSystem {
         graphics.generateTexture(key, (radius + 30) * 2, (radius + 30) * 2);
     }
     
-    static createProjectileTexture(graphics, key, radius, color) {
+    createProjectileTexture(graphics, key, radius, color) {
         graphics.clear();
         
         // Glow
@@ -1272,7 +1273,7 @@ class RenderSystem {
         graphics.generateTexture(key, (radius + 10) * 2, (radius + 10) * 2);
     }
     
-    static createPowerupTexture(graphics, key, color) {
+    createPowerupTexture(graphics, key, color) {
         graphics.clear();
         
         const size = 30;
@@ -1306,7 +1307,7 @@ class RenderSystem {
         graphics.generateTexture(key, size * 2, size * 2);
     }
     
-    static createPlanetTexture(graphics, key, radius, color) {
+    createPlanetTexture(graphics, key, radius, color) {
         graphics.clear();
         
         // Atmosphere
@@ -1338,7 +1339,7 @@ class RenderSystem {
         graphics.generateTexture(key, radius * 2, radius * 2);
     }
     
-    static createCircleTexture(graphics, key, radius, color, alpha = 1) {
+    createCircleTexture(graphics, key, radius, color, alpha = 1) {
         graphics.clear();
         graphics.fillStyle(color, alpha);
         graphics.fillCircle(radius, radius, radius);
@@ -1347,3 +1348,4 @@ class RenderSystem {
 }
 
 // RenderSystem will be instantiated by GameInitializer
+window.RenderSystem = RenderSystem;

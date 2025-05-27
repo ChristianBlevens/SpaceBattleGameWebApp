@@ -45,6 +45,11 @@ class AISystem {
     }
     
     update(deltaTime, entityManager) {
+        // Store entityManager for use in other methods
+        if (!this.entityManager) {
+            this.entityManager = entityManager;
+        }
+        
         const aiEntities = entityManager.query('ai', 'transform', 'physics');
         
         aiEntities.forEach(entityId => {
@@ -366,6 +371,10 @@ class AISystem {
 
 // Faction-specific behaviors
 class SwarmBehavior {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
+    }
+    
     update(entityId, ai, transform, physics, deltaTime) {
         // Swarm enemies attack in groups and are very aggressive
         ai.aggressionLevel = 0.9;
@@ -381,6 +390,10 @@ class SwarmBehavior {
 }
 
 class SentinelBehavior {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
+    }
+    
     update(entityId, ai, transform, physics, deltaTime) {
         // Sentinels are defensive and protect territories
         ai.aggressionLevel = 0.4;
@@ -415,6 +428,10 @@ class SentinelBehavior {
 }
 
 class PhantomBehavior {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
+    }
+    
     update(entityId, ai, transform, physics, deltaTime) {
         // Phantoms are stealthy and unpredictable
         ai.aggressionLevel = 0.6;
@@ -450,6 +467,10 @@ class PhantomBehavior {
 }
 
 class TitanBehavior {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
+    }
+    
     update(entityId, ai, transform, physics, deltaTime) {
         // Titans are slow but powerful
         ai.aggressionLevel = 0.8;
@@ -475,3 +496,5 @@ class TitanBehavior {
         }
     }
 }
+
+window.AiSystem = AISystem;

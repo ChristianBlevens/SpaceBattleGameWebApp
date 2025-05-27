@@ -12,7 +12,7 @@ class MenuScene extends Phaser.Scene {
         this.eventBus = new EventBus();
         this.audioHandler = null;
     }
-    
+
     create() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
@@ -108,26 +108,40 @@ class MenuScene extends Phaser.Scene {
     }
     
     setupAudioHandler() {
-        this.audioHandler = {
-            playSound: (sound) => {
-                if (this.sound && !this.sound.mute) {
-                    this.sound.play(sound, { volume: 0.5 });
-                }
-            },
-            playMusic: () => {
-                if (this.sound && !this.sound.mute && !this.music) {
-                    this.music = this.sound.add('music', { loop: true, volume: 0.3 });
-                    this.music.play();
-                }
-            },
-            stopMusic: () => {
-                if (this.music) {
-                    this.music.stop();
-                    this.music = null;
-                }
-            }
-        };
-    }
+		this.audioHandler = {
+			playSound: (sound) => {
+				try {
+					if (this.sound && !this.sound.mute) {
+						// Check if sound exists in cache before playing
+						if (this.cache.audio.exists(sound)) {
+							this.sound.play(sound, { volume: 0.5 });
+						}
+					}
+				} catch (e) {
+					// Silently ignore audio errors
+				}
+			},
+			playMusic: () => {
+				try {
+					if (this.sound && !this.sound.mute && !this.music) {
+						// Check if music exists in cache before playing
+						if (this.cache.audio.exists('music')) {
+							this.music = this.sound.add('music', { loop: true, volume: 0.3 });
+							this.music.play();
+						}
+					}
+				} catch (e) {
+					// Silently ignore audio errors
+				}
+			},
+			stopMusic: () => {
+				if (this.music) {
+					this.music.stop();
+					this.music = null;
+				}
+			}
+		};
+	}
     
     createAnimatedBackground() {
         // Create gradient background
@@ -163,7 +177,8 @@ class MenuScene extends Phaser.Scene {
             const nebula = this.add.graphics();
             const x = Phaser.Math.Between(200, this.cameras.main.width - 200);
             const y = Phaser.Math.Between(200, this.cameras.main.height - 200);
-            const color = Phaser.Math.Pick([0x6600ff, 0x0066ff, 0xff0066]);
+            const colors = [0x6600ff, 0x0066ff, 0xff0066];
+			const color = colors[Math.floor(Math.random() * colors.length)];
             
             nebula.fillStyle(color, 0.05);
             nebula.fillCircle(x, y, 150);
@@ -187,7 +202,7 @@ class MenuScene extends Phaser.Scene {
             const x = Phaser.Math.Between(100, this.cameras.main.width - 100);
             const y = Phaser.Math.Between(100, this.cameras.main.height - 100);
             const size = Phaser.Math.Between(20, 40);
-            const color = Phaser.Math.Pick(planetColors);
+            const color = planetColors[Math.floor(Math.random() * planetColors.length)];
             
             // Planet body
             const planet = this.add.circle(x, y, size, color, 0.3);

@@ -695,3 +695,5 @@ class AbilitySystem {
         });
     }
 }
+
+window.AbilitySystem = AbilitySystem;

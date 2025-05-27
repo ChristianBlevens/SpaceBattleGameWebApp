@@ -161,6 +161,16 @@ class InputSystem {
     update(deltaTime) {
         if (this.gameState.get('game.paused')) return;
         
+        // Debug: Check if we have a valid player ID
+        if (!this.playerId) {
+            this.playerId = this.gameState.getPlayerId();
+            if (!this.playerId) {
+                console.log('[InputSystem] No player ID available yet');
+                return;
+            }
+            console.log('[InputSystem] Got player ID:', this.playerId);
+        }
+        
         // Update movement vector
         this.updateMovement();
         
@@ -183,6 +193,11 @@ class InputSystem {
         if (this.keys.right.isDown) this.moveVector.x += 1;
         if (this.keys.up.isDown) this.moveVector.y -= 1;
         if (this.keys.down.isDown) this.moveVector.y += 1;
+        
+        // Debug log when movement is detected
+        if (this.moveVector.x !== 0 || this.moveVector.y !== 0) {
+            console.log('[InputSystem] Movement detected:', this.moveVector);
+        }
         
         // Touch input
         if (this.touchControls) {
@@ -254,7 +269,10 @@ class InputSystem {
         if (this.moveVector.x === 0 && this.moveVector.y === 0) return;
         
         const playerSprite = this.scene.sprites.get(this.playerId);
-        if (!playerSprite) return;
+        if (!playerSprite) {
+            console.log('[InputSystem] No player sprite found for ID:', this.playerId);
+            return;
+        }
         
         const stats = this.gameState.get('player.stats');
         const force = (stats.speed || GameConfig.player.baseSpeed) * 0.001;
@@ -269,10 +287,14 @@ class InputSystem {
             }
         }
         
-        playerSprite.applyForce({
-            x: this.moveVector.x * force * boostMultiplier,
-            y: this.moveVector.y * force * boostMultiplier
-        });
+        // Apply force to the Matter.js body
+        if (playerSprite.body) {
+            const forceVector = {
+                x: this.moveVector.x * force * boostMultiplier,
+                y: this.moveVector.y * force * boostMultiplier
+            };
+            Matter.Body.applyForce(playerSprite.body, playerSprite.body.position, forceVector);
+        }
     }
     
     getMoveVector() {
@@ -289,3 +311,4 @@ class InputSystem {
 }
 
 // InputSystem will be instantiated by GameInitializer
+window.InputSystem = InputSystem;

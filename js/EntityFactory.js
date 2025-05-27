@@ -17,10 +17,10 @@ class EntityFactory {
         const playerId = this.entityManager.createEntity('player', {
             transform: { x: x, y: y, rotation: 0, scale: 1, prevX: x, prevY: y },
             physics: { velocity: { x: 5, y: 0 }, acceleration: { x: 0, y: 0 }, mass: 15, radius: 40, damping: 0.999, maxSpeed: 15, elasticity: 0.8 },
-            health: {
-                GameConfig.player.initialHealth,
-                GameConfig.player.initialHealth
-            ),
+            health: Components.health(
+				GameConfig.player.initialHealth,
+				GameConfig.player.initialHealth
+			),
             weapon: Components.weapon(
                 GameConfig.player.baseDamage,
                 300,
@@ -54,8 +54,15 @@ class EntityFactory {
     }
     
     createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}) {
+        console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity });
+        
         const factionConfig = GameConfig.factions[faction];
-        if (!factionConfig) return null;
+        if (!factionConfig) {
+            console.error('[EntityFactory] No faction config for:', faction);
+            return null;
+        }
+        
+        console.log('[EntityFactory] Faction config:', factionConfig);
         
         // Create enemy entity
         const enemyId = this.entityManager.createEntity('enemy', {
@@ -73,6 +80,8 @@ class EntityFactory {
             faction: Components.faction(faction, factionConfig.color, [faction])
         });
         
+        console.log('[EntityFactory] Enemy entity created with ID:', enemyId);
+        
         // Create sprite
         const sprite = this.scene.matter.add.sprite(x, y, `enemy-${faction}`);
         sprite.setCircle(25 * factionConfig.size);
@@ -85,9 +94,13 @@ class EntityFactory {
         sprite.setData('entityId', enemyId);
         sprite.setData('entityType', 'enemy');
         
+        console.log('[EntityFactory] Enemy sprite created');
+        
         // Store references
         this.scene.sprites.set(enemyId, sprite);
         this.scene.enemyGroup.add(sprite);
+        
+        console.log('[EntityFactory] Enemy added to groups, total enemies:', this.scene.enemyGroup.children.size);
         
         return enemyId;
     }
@@ -258,3 +271,4 @@ class EntityFactory {
 }
 
 // EntityFactory will be instantiated by GameInitializer
+window.EntityFactory = EntityFactory;

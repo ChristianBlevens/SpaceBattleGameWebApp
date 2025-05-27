@@ -155,7 +155,8 @@ class CombatSystem {
     }
     
     damagePlayer(damage) {
-        const health = this.entityManager.getComponent(this.playerId, 'health');
+        const playerId = this.gameState.getPlayerId();
+        const health = this.entityManager.getComponent(playerId, 'health');
         if (!health || health.invulnerable) return;
         
         const actualDamage = this.gameState.damagePlayer(damage);
@@ -197,6 +198,7 @@ class CombatSystem {
     }
     
     handleEnemyDeath(enemyId, transform) {
+        console.log('[CombatSystem] Enemy death:', enemyId);
         // Update game state
         const combo = this.gameState.get('game.combo');
         const points = 100 * (combo + 1);
@@ -209,6 +211,7 @@ class CombatSystem {
         this.gameState.update('game.totalKills', totalKills);
         
         const remaining = this.gameState.get('waves.enemiesRemaining') - 1;
+        console.log('[CombatSystem] Enemies remaining after death:', remaining);
         this.gameState.update('waves.enemiesRemaining', remaining);
         
         // Emit events for other systems
@@ -221,7 +224,8 @@ class CombatSystem {
         
         // Spawn powerup chance
         if (Math.random() < 0.3 && transform) {
-            const type = Phaser.Math.Pick(['health', 'energy', 'credits']);
+            const types = ['health', 'energy', 'credits'];
+            const type = types[Math.floor(Math.random() * types.length)];
             this.eventBus.emit('SPAWN_POWERUP', {
                 x: transform.x,
                 y: transform.y,
@@ -230,7 +234,10 @@ class CombatSystem {
         }
         
         // Check wave completion
-        if (remaining <= 0 && this.gameState.get('waves.spawnsRemaining') <= 0) {
+        const spawnsRemaining = this.gameState.get('waves.spawnsRemaining');
+        console.log('[CombatSystem] Wave check - Enemies:', remaining, 'Spawns:', spawnsRemaining);
+        if (remaining <= 0 && spawnsRemaining <= 0) {
+            console.log('[CombatSystem] Wave complete! Emitting WAVE_COMPLETE event');
             this.eventBus.emit('WAVE_COMPLETE');
         }
         
@@ -283,7 +290,8 @@ class CombatSystem {
     }
     
     handlePlayerDeath() {
-        const transform = this.entityManager.getComponent(this.playerId, 'transform');
+        const playerId = this.gameState.getPlayerId();
+        const transform = this.entityManager.getComponent(playerId, 'transform');
         
         // Emit death event
         this.eventBus.emit('PLAYER_DIED', {
@@ -302,11 +310,13 @@ class CombatSystem {
     }
     
     processWaveRewards(waveNumber) {
+        console.log('[CombatSystem] Processing wave rewards for wave', waveNumber);
         // Calculate and apply wave completion rewards
         const waveBonus = 1000 * waveNumber;
         this.gameState.addScore(waveBonus);
         this.gameState.addCredits(500 * waveNumber);
         
+        console.log('[CombatSystem] Setting waveInProgress to false');
         this.gameState.update('waves.waveInProgress', false);
         
         // Emit reward event
@@ -319,3 +329,4 @@ class CombatSystem {
 }
 
 // CombatSystem will be instantiated by GameInitializer
+window.CombatSystem = CombatSystem;

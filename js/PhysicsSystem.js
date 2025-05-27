@@ -455,3 +455,5 @@ class SpatialGrid {
         return Array.from(nearby);
     }
 }
+
+window.PhysicsSystem = PhysicsSystem;

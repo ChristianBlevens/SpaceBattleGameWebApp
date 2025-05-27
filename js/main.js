@@ -1,5 +1,155 @@
 // main.js - Game Entry Point and Configuration
 
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('gameUI', () => ({
+        // Player state
+        health: 100,
+        maxHealth: 100,
+        energy: 100,
+        maxEnergy: 100,
+        
+        // Game state
+        credits: 0,
+        score: 0,
+        combo: 0,
+        comboTimer: 0,
+        maxComboTimer: 3000,
+        
+        // Mission state
+        activeMission: null,
+        currentWave: 0,
+        waveInProgress: false,
+        enemiesDefeated: 0,
+        totalEnemies: 0,
+        
+        // UI state
+        charging: false,
+        chargePercent: 0,
+        comboAnimation: '',
+        events: [],
+        abilities: [],
+        gameOver: false,
+        victory: false,
+        paused: false,
+        soundEnabled: true,
+        wavesCompleted: 0,
+        totalKills: 0,
+        maxCombo: 0,
+        cheapestUpgrade: 40,
+        upgradeCosts: {
+            damage: 50,
+            speed: 40,
+            defense: 60
+        },
+        
+        // Methods
+        quickUpgrade(type) {
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'upgrade', upgradeType: type }
+            }));
+        },
+        
+        restartGame() {
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'restart' }
+            }));
+        },
+        
+        returnToMenu() {
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'menu' }
+            }));
+        },
+        
+        resumeGame() {
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'pause' }
+            }));
+        },
+        
+        toggleSound() {
+            this.soundEnabled = !this.soundEnabled;
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'sound', value: this.soundEnabled }
+            }));
+        },
+        
+        quitToMenu() {
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'menu' }
+            }));
+        },
+        
+        init() {
+            // Listen for game state updates
+            window.addEventListener('gameStateUpdate', (event) => {
+                const state = event.detail;
+                
+                // Update player state
+                if (state.player) {
+                    this.health = state.player.health || 0;
+                    this.maxHealth = state.player.maxHealth || 100;
+                    this.energy = state.player.energy || 0;
+                    this.maxEnergy = state.player.maxEnergy || 100;
+                }
+                
+                // Update game state
+                if (state.game) {
+                    this.credits = state.game.credits || 0;
+                    this.score = state.game.score || 0;
+                    this.combo = state.game.combo || 0;
+                    this.comboTimer = state.game.comboTimer || 0;
+                    this.paused = state.game.paused || false;
+                    this.gameOver = state.game.gameOver || false;
+                }
+                
+                // Update mission state
+                if (state.mission) {
+                    this.currentWave = state.mission.currentWave || 0;
+                    this.waveInProgress = state.mission.waveInProgress || false;
+                    this.enemiesDefeated = state.mission.enemiesDefeated || 0;
+                    this.totalEnemies = state.mission.totalEnemies || 0;
+                }
+                
+                // Update upgrades
+                if (state.upgrades) {
+                    this.upgradeCosts = state.upgrades;
+                    this.cheapestUpgrade = Math.min(...Object.values(state.upgrades));
+                }
+            });
+            
+            // Listen for UI events
+            window.addEventListener('uiEvent', (event) => {
+                const { type, ...data } = event.detail;
+                
+                switch (type) {
+                    case 'notification':
+                        this.events.push(data);
+                        setTimeout(() => {
+                            const index = this.events.findIndex(e => e.id === data.id);
+                            if (index !== -1) {
+                                this.events.splice(index, 1);
+                            }
+                        }, 3000);
+                        break;
+                        
+                    case 'missionUpdate':
+                        this.activeMission = data.mission;
+                        break;
+                        
+                    case 'gameOver':
+                        this.gameOver = true;
+                        this.victory = data.victory;
+                        this.wavesCompleted = data.wavesCompleted || 0;
+                        this.totalKills = data.totalKills || 0;
+                        break;
+                }
+            });
+        }
+    }));
+});
+
 // Global game configuration
 const GameConfig = {
     // World settings

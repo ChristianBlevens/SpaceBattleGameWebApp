@@ -348,3 +348,4 @@ class GameState {
 }
 
 // GameState will be instantiated by GameInitializer
+window.GameState = GameState;

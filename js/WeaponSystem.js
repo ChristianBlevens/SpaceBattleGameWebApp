@@ -180,3 +180,5 @@ class WeaponSystem {
         this.projectiles.clear();
     }
 }
+
+window.WeaponSystem = WeaponSystem;
