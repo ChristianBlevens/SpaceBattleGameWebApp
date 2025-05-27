@@ -30,6 +30,7 @@ class InputSystem {
         
         this.setupKeyboard();
         this.setupMouse();
+        this.setupPointerLock();
         
         if (this.scene.sys.game.device.input.touch) {
             this.setupTouch();
@@ -45,14 +46,27 @@ class InputSystem {
             boost: Phaser.Input.Keyboard.KeyCodes.SHIFT,
             dash: Phaser.Input.Keyboard.KeyCodes.SPACE,
             pause: Phaser.Input.Keyboard.KeyCodes.ESC,
+            pauseKey: Phaser.Input.Keyboard.KeyCodes.P,
             debug: Phaser.Input.Keyboard.KeyCodes.F1,
             ability1: Phaser.Input.Keyboard.KeyCodes.ONE,
             ability2: Phaser.Input.Keyboard.KeyCodes.TWO,
             ability3: Phaser.Input.Keyboard.KeyCodes.THREE
         });
         
-        // Pause handler
+        // ESC handler - exit pointer lock instead of pause
         this.keys.pause.on('down', () => {
+            if (this.scene.input.isLocked) {
+                this.scene.input.releasePointerLock();
+            } else {
+                // Only pause if not in pointer lock mode
+                const paused = !this.gameState.get('game.paused');
+                this.gameState.update('game.paused', paused);
+                this.eventBus.emit('GAME_PAUSE', { paused });
+            }
+        });
+        
+        // P key for pause
+        this.keys.pauseKey.on('down', () => {
             const paused = !this.gameState.get('game.paused');
             this.gameState.update('game.paused', paused);
             this.eventBus.emit('GAME_PAUSE', { paused });
@@ -82,6 +96,10 @@ class InputSystem {
         });
     }
     
+    isShiftHeld() {
+        return this.keys.boost.isDown;
+    }
+    
     setupMouse() {
         this.pointer = this.scene.input.activePointer;
         
@@ -99,6 +117,45 @@ class InputSystem {
             this.eventBus.emit('CAMERA_ZOOM', {
                 delta: deltaY
             });
+        });
+    }
+    
+    setupPointerLock() {
+        // Request pointer lock when clicking on game
+        this.scene.input.on('pointerdown', () => {
+            if (!this.scene.input.isLocked) {
+                this.scene.input.requestPointerLock();
+            }
+        });
+        
+        // Handle pointer lock change
+        this.scene.input.on('pointerlockchange', (event) => {
+            if (this.scene.input.isLocked) {
+                console.log('[InputSystem] Pointer locked');
+                // Disable context menu
+                this.scene.input.disableContextMenu();
+            } else {
+                console.log('[InputSystem] Pointer released');
+            }
+        });
+        
+        // Prevent default browser behaviors
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // Disable text selection when game is active
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            gameContainer.style.userSelect = 'none';
+            gameContainer.style.webkitUserSelect = 'none';
+            gameContainer.style.mozUserSelect = 'none';
+            gameContainer.style.msUserSelect = 'none';
+        }
+        
+        // Disable page scrolling with arrow keys and space
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+                e.preventDefault();
+            }
         });
     }
     
@@ -401,6 +458,10 @@ class InputSystem {
     
     isCharging() {
         return this.isShooting;
+    }
+    
+    isShiftHeld() {
+        return this.keys && this.keys.boost.isDown;
     }
 }
 

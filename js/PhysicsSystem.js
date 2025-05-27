@@ -20,8 +20,8 @@ class PhysicsSystem {
         
         // Catastrophe wandering properties
         this.catastropheWanderAngle = Math.random() * Math.PI * 2;
-        this.catastropheWanderSpeed = 300;  // Much faster wandering
-        this.catastropheWanderTurnRate = 2.0;  // More erratic movement
+        this.catastropheWanderSpeed = 4500;  // Even faster wandering
+        this.catastropheWanderTurnRate = 5.0;  // Much more erratic movement
         this.catastropheId = null;
         
         // Immunity tracking
@@ -518,11 +518,18 @@ class PhysicsSystem {
                 const newProximityTime = proximityTime + (deltaTime * 1000);
                 this.vortexProximity.set(entityId, newProximityTime);
                 
-                // Grant immunity after 2 seconds
+                // Grant immunity after exposure
                 if (newProximityTime >= catastropheData.immunityTriggerTime) {
                     this.vortexImmunity.set(entityId, currentTime + catastropheData.immunityDuration);
                     this.vortexProximity.delete(entityId);
                     console.log(`[PhysicsSystem] Entity ${entityId} gained immunity from catastrophe`);
+                    
+                    // Apply strong ejection force to push entity away
+                    const ejectForce = 800;
+                    const ejectX = (dx / dist) * ejectForce;
+                    const ejectY = (dy / dist) * ejectForce;
+                    physics.velocity.x += ejectX / physics.mass;
+                    physics.velocity.y += ejectY / physics.mass;
                     return;
                 }
             } else {

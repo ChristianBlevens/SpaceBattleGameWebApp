@@ -96,58 +96,79 @@ class WaveSystem {
     }
     
     generateWaveConfig(waveNumber) {
-        const baseEnemies = GameConfig.waves.baseEnemyCount;
-        const multiplier = Math.pow(GameConfig.waves.enemyMultiplier, waveNumber - 1);
-        const totalEnemies = Math.floor(baseEnemies * multiplier);
+        // Base counts for wave 1
+        const baseSwarm = 20;
+        const baseSentinel = 10;
+        const basePhantom = 10;
+        const baseTitan = 3;
+        
+        // Calculate counts with scaling
+        const swarmCount = Math.floor(baseSwarm * Math.pow(1.2, waveNumber - 1));
+        const sentinelCount = Math.floor(baseSentinel * Math.pow(1.15, waveNumber - 1));
+        const phantomCount = Math.floor(basePhantom * Math.pow(1.15, waveNumber - 1));
+        const titanCount = Math.floor(baseTitan * Math.pow(1.1, waveNumber - 1));
+        
+        const totalEnemies = swarmCount + sentinelCount + phantomCount + titanCount;
         
         const config = {
             wave: waveNumber,
             totalEnemies: totalEnemies,
             spawns: [],
-            spawnDelay: Math.max(500, 2000 - waveNumber * 100), // Faster spawns each wave
-            isBossWave: waveNumber % GameConfig.waves.bossWaveInterval === 0
+            spawnDelay: 100, // Fast spawning for groups
+            isBossWave: waveNumber % GameConfig.waves.bossWaveInterval === 0,
+            // Store spawn patterns
+            swarmPositions: [],
+            sentinelPositions: [],
+            titanPositions: []
         };
         
-        // Determine enemy composition
-        if (config.isBossWave) {
-            // Boss wave - fewer but stronger enemies
-            const bosses = Math.floor(1 + waveNumber / 5);
-            const elites = Math.floor(totalEnemies * 0.3);
-            const regulars = totalEnemies - bosses - elites;
-            
-            // Add titans
-            for (let i = 0; i < bosses; i++) {
-                config.spawns.push({ type: 'titan', faction: 'titan' });
-            }
-            
-            // Add phantoms and sentinels
-            for (let i = 0; i < elites; i++) {
-                config.spawns.push({
-                    type: 'elite',
-                    faction: Math.random() < 0.5 ? 'phantom' : 'sentinel'
-                });
-            }
-            
-            // Fill with swarm
-            for (let i = 0; i < regulars; i++) {
-                config.spawns.push({ type: 'regular', faction: 'swarm' });
-            }
-        } else {
-            // Regular wave - mixed composition
-            const distribution = this.getWaveDistribution(waveNumber);
-            
-            Object.entries(distribution).forEach(([faction, count]) => {
-                for (let i = 0; i < count; i++) {
-                    config.spawns.push({
-                        type: faction === 'titan' ? 'elite' : 'regular',
-                        faction: faction
-                    });
+        // Calculate spawn positions for organized groups
+        
+        // Swarm - all spawn together in a cluster
+        const swarmCenter = this.getRandomMapPosition();
+        for (let i = 0; i < swarmCount; i++) {
+            const offset = this.getClusterOffset(i, 50); // Small spacing
+            config.spawns.push({ 
+                type: 'swarm', 
+                faction: 'swarm',
+                position: {
+                    x: swarmCenter.x + offset.x,
+                    y: swarmCenter.y + offset.y
                 }
             });
         }
         
-        // Shuffle spawn order
-        config.spawns = this.shuffleArray(config.spawns);
+        // Sentinels - spawn near each other with set intervals
+        const sentinelLine = this.getLinePositions(sentinelCount, 150); // 150 unit spacing
+        for (let i = 0; i < sentinelCount; i++) {
+            config.spawns.push({
+                type: 'sentinel',
+                faction: 'sentinel',
+                position: sentinelLine[i]
+            });
+        }
+        
+        // Phantoms - spawn randomly around the map
+        for (let i = 0; i < phantomCount; i++) {
+            config.spawns.push({
+                type: 'phantom',
+                faction: 'phantom',
+                position: this.getRandomMapPosition()
+            });
+        }
+        
+        // Titans - spawn on completely different sides of the map
+        const titanPositions = this.getDistributedPositions(titanCount);
+        for (let i = 0; i < titanCount; i++) {
+            config.spawns.push({
+                type: 'titan',
+                faction: 'titan',
+                position: titanPositions[i]
+            });
+        }
+        
+        // Increase enemy strength each wave
+        config.strengthMultiplier = 1 + (waveNumber - 1) * 0.1;
         
         return config;
     }
@@ -208,10 +229,22 @@ class WaveSystem {
     spawnEnemy(spawnInfo) {
         console.log('[WaveSystem] spawnEnemy called with:', spawnInfo);
         
-        // Choose random spawn point
-        const spawnPoint = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
-        const x = spawnPoint.x();
-        const y = spawnPoint.y();
+        let x, y;
+        
+        // Use predefined position if available
+        if (spawnInfo.position) {
+            x = spawnInfo.position.x;
+            y = spawnInfo.position.y;
+        } else {
+            // Fallback to random spawn point
+            const spawnPoint = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
+            x = spawnPoint.x();
+            y = spawnPoint.y();
+        }
+        
+        // Ensure position is within bounds
+        x = Math.max(100, Math.min(GameConfig.world.width - 100, x));
+        y = Math.max(100, Math.min(GameConfig.world.height - 100, y));
         
         console.log('[WaveSystem] Spawn position:', { x, y });
         
@@ -235,8 +268,17 @@ class WaveSystem {
         
         console.log('[WaveSystem] Creating enemy with velocity:', initialVelocity);
         
-        // Create enemy using factory
-        const enemyId = this.entityFactory.createEnemy(spawnInfo.faction, x, y, initialVelocity);
+        // Create enemy using factory with strength multiplier
+        const waveConfig = this.waveConfigs[this.currentWave];
+        const strengthMultiplier = waveConfig ? waveConfig.strengthMultiplier : 1;
+        
+        const enemyId = this.entityFactory.createEnemy(
+            spawnInfo.faction, 
+            x, 
+            y, 
+            initialVelocity,
+            strengthMultiplier
+        );
         
         console.log('[WaveSystem] Enemy created with ID:', enemyId);
         
@@ -324,6 +366,94 @@ class WaveSystem {
             isBossWave: waveConfig.isBossWave,
             inProgress: this.gameState.get('waves.waveInProgress')
         };
+    }
+    
+    // Helper methods for spawn positioning
+    getRandomMapPosition() {
+        const margin = 200;
+        return {
+            x: Phaser.Math.Between(margin, GameConfig.world.width - margin),
+            y: Phaser.Math.Between(margin, GameConfig.world.height - margin)
+        };
+    }
+    
+    getClusterOffset(index, spacing) {
+        // Create a hexagonal cluster pattern
+        const ring = Math.floor((Math.sqrt(1 + 8 * index) - 1) / 2);
+        const indexInRing = index - (ring * (ring + 1)) / 2;
+        const angle = (indexInRing / Math.max(1, ring * 6)) * Math.PI * 2;
+        
+        return {
+            x: Math.cos(angle) * ring * spacing,
+            y: Math.sin(angle) * ring * spacing
+        };
+    }
+    
+    getLinePositions(count, spacing) {
+        const positions = [];
+        const edge = Math.floor(Math.random() * 4); // Random edge
+        
+        const margin = 200;
+        const totalLength = (count - 1) * spacing;
+        
+        for (let i = 0; i < count; i++) {
+            let x, y;
+            const offset = i * spacing - totalLength / 2;
+            
+            switch (edge) {
+                case 0: // Top edge
+                    x = GameConfig.world.centerX + offset;
+                    y = margin;
+                    break;
+                case 1: // Right edge
+                    x = GameConfig.world.width - margin;
+                    y = GameConfig.world.centerY + offset;
+                    break;
+                case 2: // Bottom edge
+                    x = GameConfig.world.centerX + offset;
+                    y = GameConfig.world.height - margin;
+                    break;
+                case 3: // Left edge
+                    x = margin;
+                    y = GameConfig.world.centerY + offset;
+                    break;
+            }
+            
+            positions.push({ x, y });
+        }
+        
+        return positions;
+    }
+    
+    getDistributedPositions(count) {
+        const positions = [];
+        const sections = [];
+        
+        // Divide map into sections
+        const sectionWidth = GameConfig.world.width / Math.ceil(Math.sqrt(count));
+        const sectionHeight = GameConfig.world.height / Math.ceil(Math.sqrt(count));
+        
+        // Create all possible sections
+        for (let x = 0; x < Math.ceil(Math.sqrt(count)); x++) {
+            for (let y = 0; y < Math.ceil(Math.sqrt(count)); y++) {
+                sections.push({
+                    x: x * sectionWidth + sectionWidth / 2,
+                    y: y * sectionHeight + sectionHeight / 2
+                });
+            }
+        }
+        
+        // Shuffle sections and pick positions
+        const shuffledSections = this.shuffleArray(sections);
+        for (let i = 0; i < count && i < shuffledSections.length; i++) {
+            const section = shuffledSections[i];
+            positions.push({
+                x: section.x + Phaser.Math.Between(-sectionWidth/4, sectionWidth/4),
+                y: section.y + Phaser.Math.Between(-sectionHeight/4, sectionHeight/4)
+            });
+        }
+        
+        return positions;
     }
 }
 

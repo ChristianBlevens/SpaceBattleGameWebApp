@@ -22,9 +22,9 @@ class EntityFactory {
 				GameConfig.player.initialHealth
 			),
             weapon: Components.weapon(
+                'basic',
                 GameConfig.player.baseDamage,
-                300,
-                25
+                300
             ),
             sprite: Components.sprite('player'),
             trail: Components.trail(20, 0x00ffff, 3),
@@ -60,8 +60,8 @@ class EntityFactory {
         return playerId;
     }
     
-    createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}) {
-        console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity });
+    createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}, strengthMultiplier = 1) {
+        console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity, strengthMultiplier });
         
         const factionConfig = GameConfig.factions[faction];
         if (!factionConfig) {
@@ -70,6 +70,12 @@ class EntityFactory {
         }
         
         console.log('[EntityFactory] Faction config:', factionConfig);
+        
+        // Apply strength multiplier to stats
+        const enhancedHealth = Math.floor(factionConfig.health * strengthMultiplier);
+        const enhancedDamage = Math.floor(factionConfig.damage * strengthMultiplier);
+        
+        console.log(`[EntityFactory] Creating ${faction} with health: ${enhancedHealth}, damage: ${enhancedDamage}`);
         
         // Create enemy entity
         const enemyId = this.entityManager.createEntity('enemy', {
@@ -80,8 +86,8 @@ class EntityFactory {
                 10 * factionConfig.size, 
                 25 * factionConfig.size
             ),
-            health: Components.health(factionConfig.health, factionConfig.health),
-            weapon: Components.weapon(factionConfig.damage, 1500, 15),
+            health: Components.health(enhancedHealth, enhancedHealth),
+            weapon: Components.weapon('basic', enhancedDamage, 1500),
             ai: Components.ai(factionConfig.behavior, faction),
             sprite: Components.sprite(`enemy-${faction}`),
             faction: Components.faction(faction, factionConfig.color, [faction])
@@ -94,13 +100,13 @@ class EntityFactory {
         
         // Set hitbox based on faction sprite size
         const hitboxSizes = {
-            swarm: 6,    // 24x12 sprite
-            sentinel: 12, // 28x20 sprite
-            phantom: 12,  // 32x16 sprite
-            titan: 18    // 40x32 sprite
+            swarm: 10,    // Increased from 6 - 24x12 sprite
+            sentinel: 14, // Increased from 12 - 28x20 sprite
+            phantom: 14,  // Increased from 12 - 32x16 sprite
+            titan: 20    // Increased from 18 - 40x32 sprite
         };
         
-        const baseHitbox = hitboxSizes[faction] || 10;
+        const baseHitbox = hitboxSizes[faction] || 12;
         sprite.setCircle(baseHitbox * factionConfig.size);
         sprite.setMass(10 * factionConfig.size);
         sprite.setFriction(0);
@@ -294,11 +300,11 @@ class EntityFactory {
             sprite: Components.sprite('vortex'),
             catastrophe: {
                 strength: 400,  // Much less intense pull
-                radius: 1500,     // Close immunity trigger radius
+                radius: 300,     // Close immunity trigger radius (same as visual)
                 pullRadius: 2000, // Smaller pull radius
                 rotationSpeed: 4,
-                immunityTriggerTime: 2000, // 2 seconds near it
-                immunityDuration: 10000 // 10 seconds immunity
+                immunityTriggerTime: 1000, // 1 second near it
+                immunityDuration: 15000 // 15 seconds immunity
             }
         });
         

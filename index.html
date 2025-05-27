@@ -238,15 +238,17 @@
             </template>
         </div>
         
-        <!-- Wave Indicator (commented out as it's redundant with in-game announcements) -->
-        <!-- <div class="wave-indicator" x-show="waveInProgress">
+        <!-- Wave Indicator -->
+        <div class="wave-indicator" x-show="waveInProgress">
             <h2 class="wave-title animate__animated animate__pulse animate__infinite">
                 WAVE <span x-text="currentWave"></span>
             </h2>
-            <div class="wave-progress">
-                <span x-text="`${enemiesDefeated}/${totalEnemies} Enemies`"></span>
-            </div>
-        </div> -->
+        </div>
+        
+        <!-- Controls Display -->
+        <div class="controls-display">
+            <span>WASD: Move | Mouse: Aim | Click: Shoot | Space: Dash | Shift: Enemy Markers | 1-3: Abilities | P: Pause | ESC: Release Cursor</span>
+        </div>
         
         <!-- Game Over Screen -->
         <div class="game-over-overlay" x-show="gameOver" x-transition>

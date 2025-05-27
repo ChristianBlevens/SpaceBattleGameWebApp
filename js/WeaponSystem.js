@@ -121,6 +121,8 @@ class WeaponSystem {
         const speed = weapon.projectileSpeed * (1 + chargeLevel * 0.5);
         const size = isCharged ? 12 : 8;
         
+        console.log(`[WeaponSystem] Firing weapon: base damage ${weapon.damage}, charge ${chargeLevel}, final damage ${damage}`);
+        
         // Spawn position (in front of shooter)
         const spawnDistance = 60;
         const spawnX = transform.x + Math.cos(angle) * spawnDistance;

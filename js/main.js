@@ -193,36 +193,36 @@ const GameConfig = {
         swarm: {
             color: 0xff6666,
             behavior: 'aggressive',
-            speed: 5.5,
-            health: 30,
-            damage: 8,
+            speed: 8.0,      // High speed
+            health: 20,      // Low health
+            damage: 10,      // Medium damage
             size: 0.7,
             spawnCount: 15
         },
         sentinel: {
             color: 0x66ff66,
             behavior: 'defensive',
-            speed: 4.0,
-            health: 60,
-            damage: 12,
+            speed: 5.0,      // Medium speed
+            health: 100,     // High health
+            damage: 12,      // Medium damage
             size: 1.2,
             spawnCount: 8
         },
         phantom: {
             color: 0x9966ff,
             behavior: 'stealth',
-            speed: 6.0,
-            health: 40,
-            damage: 15,
+            speed: 9.0,      // High speed
+            health: 50,      // Medium health
+            damage: 20,      // High damage
             size: 0.9,
             spawnCount: 10
         },
         titan: {
             color: 0xff9966,
             behavior: 'boss',
-            speed: 3.0,
-            health: 200,
-            damage: 25,
+            speed: 2.5,      // Low speed
+            health: 500,     // Extremely high health
+            damage: 30,      // High damage
             size: 2.0,
             spawnCount: 3
         }
@@ -256,8 +256,8 @@ const GameConfig = {
 // Phaser game configuration
 const phaserConfig = {
     type: Phaser.WEBGL,
-    width: 1280,
-    height: 720,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000033',
     parent: 'game-container',
     physics: {
@@ -269,8 +269,11 @@ const phaserConfig = {
     },
     scene: [BootScene, MenuScene, GameScene],
     scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.NO_CENTER,
+        width: '100%',
+        height: '100%',
+        parent: 'game-container'
     },
     render: {
         antialias: true,

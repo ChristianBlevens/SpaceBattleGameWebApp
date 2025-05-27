@@ -32,6 +32,40 @@ class UIManager {
         
         this.eventBus.on('ENEMY_KILLED', (data) => {
             this.showKillNotification(data);
+            
+            // Update the mission objectives
+            const currentMission = this.gameState.get('waves.current');
+            const totalEnemies = this.gameState.get('waves.totalEnemies') || 0;
+            const enemiesRemaining = this.gameState.get('waves.enemiesRemaining') || 0;
+            const enemiesDefeated = totalEnemies - enemiesRemaining;
+            
+            // Update mission objective
+            this.updateMission({
+                name: `Wave ${currentMission}`,
+                objectives: [
+                    {
+                        description: 'Defeat all enemies',
+                        current: enemiesDefeated,
+                        target: totalEnemies,
+                        completed: enemiesRemaining === 0
+                    }
+                ],
+                rewards: {
+                    credits: 500 * currentMission
+                }
+            });
+            
+            // Update the wave tracking state
+            window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+                detail: {
+                    mission: {
+                        currentWave: currentMission,
+                        waveInProgress: this.gameState.get('waves.waveInProgress'),
+                        enemiesDefeated: enemiesDefeated,
+                        totalEnemies: totalEnemies
+                    }
+                }
+            }));
         });
         
         this.eventBus.on('COMBO_INCREASE', (data) => {
@@ -57,6 +91,18 @@ class UIManager {
                     credits: 500 * data.wave
                 }
             });
+            
+            // Update the wave tracking state
+            window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+                detail: {
+                    mission: {
+                        currentWave: data.wave,
+                        waveInProgress: true,
+                        enemiesDefeated: 0,
+                        totalEnemies: data.enemies
+                    }
+                }
+            }));
         });
         
         this.eventBus.on('POWERUP_COLLECTED', (data) => {

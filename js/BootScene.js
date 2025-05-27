@@ -13,20 +13,22 @@ class BootScene extends Phaser.Scene {
         // Add logo
         const logoText = this.add.text(width / 2, height / 2 - 100, 'GRAVITY WARS', {
             fontSize: '64px',
-            fontFamily: 'Orbitron',
+            fontFamily: 'Orbitron, monospace',
             color: '#00ffff',
             stroke: '#000066',
-            strokeThickness: 6
+            strokeThickness: 6,
+            padding: { x: 10, y: 10 }
         });
         logoText.setOrigin(0.5);
         
         // Add subtitle
         const subtitleText = this.add.text(width / 2, height / 2 - 40, 'COSMIC ARENA', {
             fontSize: '32px',
-            fontFamily: 'Orbitron',
+            fontFamily: 'Orbitron, monospace',
             color: '#ff00ff',
             stroke: '#660066',
-            strokeThickness: 4
+            strokeThickness: 4,
+            padding: { x: 10, y: 10 }
         });
         subtitleText.setOrigin(0.5);
         
@@ -41,8 +43,9 @@ class BootScene extends Phaser.Scene {
         // Loading text
         const loadingText = this.add.text(width / 2, height / 2 + 90, 'INITIALIZING...', {
             fontSize: '20px',
-            fontFamily: 'Orbitron',
-            color: '#ffffff'
+            fontFamily: 'Orbitron, monospace',
+            color: '#ffffff',
+            padding: { x: 5, y: 5 }
         });
         loadingText.setOrigin(0.5);
         
@@ -82,6 +85,11 @@ class BootScene extends Phaser.Scene {
     }
     
     create() {
+        // Ensure font is loaded before proceeding
+        const testText = this.add.text(-100, -100, 'Test', { fontFamily: 'Orbitron, monospace' });
+        this.time.delayedCall(100, () => {
+            testText.destroy();
+        });
         // Boot scene is complete, preload handles the transition
     }
     

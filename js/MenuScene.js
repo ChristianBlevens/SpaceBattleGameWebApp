@@ -29,10 +29,11 @@ class MenuScene extends Phaser.Scene {
         // Main title with animation
         const titleText = this.add.text(width / 2, height * 0.2, 'GRAVITY WARS', {
             fontSize: '72px',
-            fontFamily: 'Orbitron',
+            fontFamily: 'Orbitron, monospace',
             color: '#00ffff',
             stroke: '#000066',
-            strokeThickness: 8
+            strokeThickness: 8,
+            padding: { x: 10, y: 10 }
         });
         titleText.setOrigin(0.5);
         titleText.setScale(0);
@@ -40,10 +41,11 @@ class MenuScene extends Phaser.Scene {
         // Subtitle
         const subtitleText = this.add.text(width / 2, height * 0.3, 'COSMIC ARENA', {
             fontSize: '36px',
-            fontFamily: 'Orbitron',
+            fontFamily: 'Orbitron, monospace',
             color: '#ff00ff',
             stroke: '#660066',
-            strokeThickness: 4
+            strokeThickness: 4,
+            padding: { x: 10, y: 10 }
         });
         subtitleText.setOrigin(0.5);
         subtitleText.setAlpha(0);
@@ -86,15 +88,17 @@ class MenuScene extends Phaser.Scene {
         // Add version text
         const versionText = this.add.text(10, height - 30, 'v1.0.0', {
             fontSize: '16px',
-            fontFamily: 'Orbitron',
-            color: '#666666'
+            fontFamily: 'Orbitron, monospace',
+            color: '#666666',
+            padding: { x: 5, y: 5 }
         });
         
         // Add controls hint
         const controlsText = this.add.text(width - 10, height - 30, 'WASD: Move | Mouse: Aim | Click: Shoot', {
             fontSize: '16px',
-            fontFamily: 'Orbitron',
-            color: '#666666'
+            fontFamily: 'Orbitron, monospace',
+            color: '#666666',
+            padding: { x: 5, y: 5 }
         });
         controlsText.setOrigin(1, 1);
         
@@ -246,10 +250,11 @@ class MenuScene extends Phaser.Scene {
         menuOptions.forEach((option, index) => {
             const menuItem = this.add.text(width / 2, startY + (index * spacing), option.text, {
                 fontSize: '32px',
-                fontFamily: 'Orbitron',
+                fontFamily: 'Orbitron, monospace',
                 color: option.disabled ? '#666666' : '#ffffff',
                 stroke: '#000000',
-                strokeThickness: 2
+                strokeThickness: 2,
+                padding: { x: 10, y: 10 }
             });
             menuItem.setOrigin(0.5);
             menuItem.setInteractive({ useHandCursor: !option.disabled });
@@ -358,13 +363,17 @@ class MenuScene extends Phaser.Scene {
         // Deselect previous item
         if (this.menuItems[this.selectedIndex]) {
             const prevItem = this.menuItems[this.selectedIndex];
-            this.tweens.add({
-                targets: prevItem,
-                scale: prevItem.baseScale,
-                duration: 200,
-                ease: 'Power2'
-            });
-            prevItem.setColor('#ffffff');
+            if (prevItem && prevItem.active) {
+                this.tweens.add({
+                    targets: prevItem,
+                    scale: prevItem.baseScale || 1,
+                    duration: 200,
+                    ease: 'Power2'
+                });
+                if (prevItem.setColor) {
+                    prevItem.setColor('#ffffff');
+                }
+            }
         }
         
         // Select new item

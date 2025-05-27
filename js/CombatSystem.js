@@ -74,6 +74,7 @@ class CombatSystem {
                     projectileData.hitEntities.add(entityB);
                     
                     // Apply damage
+                    console.log(`[CombatSystem] Projectile hit: ${projectileData.damage} damage from ${projectileData.ownerId}`);
                     this.applyDamage(entityB, projectileData.damage, entityA);
                     
                     // Destroy projectile if not penetrating
@@ -195,6 +196,8 @@ class CombatSystem {
         const transform = this.entityManager.getComponent(enemyId, 'transform');
         
         if (!health) return;
+        
+        console.log(`[CombatSystem] Damaging enemy ${enemyId}: ${damage} damage, current health: ${health.current}/${health.max}`);
         
         // Apply damage
         health.current -= damage;

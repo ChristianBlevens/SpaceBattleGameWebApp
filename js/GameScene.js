@@ -22,6 +22,9 @@ class GameScene extends Phaser.Scene {
     }
     
     create() {
+        // Add game-active class to body for CSS styling
+        document.body.classList.add('game-active');
+        
         // Initialize collections
         this.sprites = new Map();
         this.trails = new Map();
@@ -38,7 +41,10 @@ class GameScene extends Phaser.Scene {
         this.gameInitializer.initializeAllSystems();
         
         // Get references to core systems
-        const { eventBus, renderSystem, waveSystem, entityFactory, audioManager } = this.gameInitializer;
+        const { eventBus, renderSystem, waveSystem, entityFactory, audioManager, inputSystem } = this.gameInitializer;
+        
+        // Store inputSystem reference for RenderSystem
+        this.inputSystem = inputSystem;
         
         // Create environment through RenderSystem
         renderSystem.createEnvironment();
@@ -428,6 +434,14 @@ class GameScene extends Phaser.Scene {
     }
     
     destroy() {
+        // Remove game-active class from body
+        document.body.classList.remove('game-active');
+        
+        // Release pointer lock if active
+        if (this.input.mouse.locked) {
+            this.input.mouse.releasePointerLock();
+        }
+        
         // Clean up event listeners
         window.removeEventListener('gameCommand', this.handleUICommand);
         
