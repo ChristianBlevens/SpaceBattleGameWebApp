@@ -19,6 +19,7 @@ class GameInitializer {
         this.combatSystem = new CombatSystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.waveSystem = new WaveSystem(scene, this.eventBus, this.gameState, this.entityFactory);
         this.abilitySystem = new AbilitySystem(scene, this.eventBus, this.entityManager, this.gameState);
+        this.upgradeSystem = new UpgradeSystem(this.eventBus, this.gameState, this.entityManager);
         
         // Render and input systems
         this.renderSystem = new RenderSystem(scene, this.eventBus, this.entityManager);
@@ -59,6 +60,9 @@ class GameInitializer {
         
         // Initialize wave system
         this.waveSystem.init();
+        
+        // Initialize upgrade system
+        this.upgradeSystem.init();
         
         // Set up inter-system communication
         this.setupSystemCommunication();

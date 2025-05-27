@@ -349,10 +349,11 @@ canvas {
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) !important;
     width: 150px;
     height: 150px;
     pointer-events: none;
+    z-index: 100;
 }
 
 .charge-ring {

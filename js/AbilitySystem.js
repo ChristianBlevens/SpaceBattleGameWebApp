@@ -11,6 +11,14 @@ class AbilitySystem {
         
         // Ability configurations
         this.abilities = {
+            dash: {
+                name: 'Dash',
+                energyCost: 10,
+                cooldown: 2000,
+                duration: 200,
+                icon: 'fa-wind',
+                execute: () => this.executeDash()
+            },
             boost: {
                 name: 'Speed Boost',
                 energyCost: 20,
@@ -397,6 +405,63 @@ class AbilitySystem {
             
             this.eventBus.emit('AUDIO_PLAY', { sound: 'explosion' });
         });
+    }
+    
+    executeDash() {
+        if (!this.playerId) return;
+        
+        const playerSprite = this.scene.sprites.get(this.playerId);
+        if (!playerSprite || !playerSprite.body) return;
+        
+        // Get current velocity or use aim direction
+        const physics = this.entityManager.getComponent(this.playerId, 'physics');
+        if (!physics) return;
+        
+        let dashX, dashY;
+        const currentSpeed = Math.sqrt(physics.velocity.x ** 2 + physics.velocity.y ** 2);
+        
+        if (currentSpeed > 0.5) {
+            // Dash in current movement direction
+            dashX = physics.velocity.x / currentSpeed;
+            dashY = physics.velocity.y / currentSpeed;
+        } else {
+            // Dash in facing direction
+            const rotation = playerSprite.rotation;
+            dashX = Math.cos(rotation);
+            dashY = Math.sin(rotation);
+        }
+        
+        // Apply dash impulse
+        const dashForce = 50;
+        this.eventBus.emit('FORCE_APPLIED', {
+            entityId: this.playerId,
+            force: { x: dashX * dashForce, y: dashY * dashForce }
+        });
+        
+        // Visual effects
+        this.eventBus.emit('PLAYER_DASH', {
+            entityId: this.playerId,
+            x: playerSprite.x,
+            y: playerSprite.y,
+            angle: Math.atan2(dashY, dashX)
+        });
+        
+        // Make briefly invulnerable during dash
+        const health = this.entityManager.getComponent(this.playerId, 'health');
+        if (health) {
+            health.invulnerable = true;
+            health.invulnerabilityTime = this.abilities.dash.duration;
+            
+            // Reset invulnerability after dash
+            this.scene.time.delayedCall(this.abilities.dash.duration, () => {
+                const currentHealth = this.entityManager.getComponent(this.playerId, 'health');
+                if (currentHealth) {
+                    currentHealth.invulnerable = false;
+                }
+            });
+        }
+        
+        this.eventBus.emit('AUDIO_PLAY', { sound: 'dash' });
     }
     
     getAbilityCooldown(abilityKey) {

@@ -27,7 +27,7 @@ class WeaponSystem {
             }
         });
         
-        this.eventBus.on('ENEMY_SHOOT', (data) => {
+        this.eventBus.on('ENEMY_SHOOT_REQUEST', (data) => {
             this.handleEnemyShoot(data);
         });
         

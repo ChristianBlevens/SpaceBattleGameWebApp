@@ -173,29 +173,69 @@ class GameScene extends Phaser.Scene {
         graphics.clear();
         
         // Planets
-        // Small planet
+        // Small planet (40 radius)
         graphics.fillStyle(0x8888ff, 1);
-        graphics.fillCircle(20, 20, 20);
-        graphics.generateTexture('planet-small', 40, 40);
-        graphics.clear();
-        
-        // Medium planet
-        graphics.fillStyle(0x6666ff, 1);
-        graphics.fillCircle(32, 32, 32);
-        graphics.generateTexture('planet', 64, 64);
-        graphics.generateTexture('planet-medium', 64, 64);
-        graphics.clear();
-        
-        // Large planet
-        graphics.fillStyle(0x4444ff, 1);
         graphics.fillCircle(40, 40, 40);
-        graphics.generateTexture('planet-large', 80, 80);
+        graphics.generateTexture('planet-small', 80, 80);
+        graphics.clear();
+        
+        // Medium planet (60 radius)
+        graphics.fillStyle(0x6666ff, 1);
+        graphics.fillCircle(60, 60, 60);
+        graphics.generateTexture('planet', 120, 120);
+        graphics.generateTexture('planet-medium', 120, 120);
+        graphics.clear();
+        
+        // Large planet (80 radius)
+        graphics.fillStyle(0x4444ff, 1);
+        graphics.fillCircle(80, 80, 80);
+        graphics.generateTexture('planet-large', 160, 160);
         graphics.clear();
         
         // Star
         graphics.fillStyle(0xffffaa, 1);
         graphics.fillCircle(64, 64, 64);
         graphics.generateTexture('star', 128, 128);
+        graphics.clear();
+        
+        // Vortex - spiral pattern
+        const vortexSize = 128;
+        const cx = vortexSize / 2;
+        const cy = vortexSize / 2;
+        
+        // Create spiral effect
+        for (let i = 0; i < 20; i++) {
+            const angle = i * 0.5;
+            const radius = i * 3;
+            const alpha = 1 - (i / 20);
+            
+            graphics.lineStyle(4, 0xff00ff, alpha);
+            graphics.beginPath();
+            
+            for (let j = 0; j < 50; j++) {
+                const t = j / 50;
+                const r = radius + t * 20;
+                const a = angle + t * Math.PI * 2;
+                const x = cx + Math.cos(a) * r;
+                const y = cy + Math.sin(a) * r;
+                
+                if (j === 0) {
+                    graphics.moveTo(x, y);
+                } else {
+                    graphics.lineTo(x, y);
+                }
+            }
+            
+            graphics.strokePath();
+        }
+        
+        // Add center glow
+        graphics.fillStyle(0xff00ff, 0.8);
+        graphics.fillCircle(cx, cy, 15);
+        graphics.fillStyle(0xffffff, 0.5);
+        graphics.fillCircle(cx, cy, 8);
+        
+        graphics.generateTexture('vortex', vortexSize, vortexSize);
         
         graphics.destroy();
     }
@@ -241,6 +281,11 @@ class GameScene extends Phaser.Scene {
                 physics.velocity.y = Math.sin(angle) * speed;
             }
         }
+        
+        // Create single wandering catastrophe (combined vortex + spiral)
+        const catastropheX = Phaser.Math.Between(2000, GameConfig.world.width - 2000);
+        const catastropheY = Phaser.Math.Between(2000, GameConfig.world.height - 2000);
+        this.catastropheId = entityFactory.createCatastrophe(catastropheX, catastropheY);
     }
     
     setupEventListeners() {
@@ -295,7 +340,7 @@ class GameScene extends Phaser.Scene {
         });
     }
     
-    handleUICommand(command) {
+    handleUICommand(data) {
         const { eventBus, gameState } = this.gameInitializer;
         
         const commands = {
@@ -312,17 +357,17 @@ class GameScene extends Phaser.Scene {
             },
             upgrade: () => {
                 eventBus.emit('UPGRADE_REQUEST', {
-                    upgradeType: command.upgradeType
+                    upgradeType: data.upgradeType
                 });
             },
             sound: () => {
-                this.sound.mute = !command.value;
-                eventBus.emit('AUDIO_SET_MUTE', { muted: !command.value });
+                this.sound.mute = !data.value;
+                eventBus.emit('AUDIO_SET_MUTE', { muted: !data.value });
             }
         };
         
-        if (commands[command.command]) {
-            commands[command.command]();
+        if (commands[data.command]) {
+            commands[data.command]();
         }
     }
     
@@ -366,6 +411,15 @@ class GameScene extends Phaser.Scene {
                         console.log('[GameScene] Wave state changed:', this.lastWaveInProgress, '->', waveInProgress);
                         this.lastWaveInProgress = waveInProgress;
                     }
+                    
+                    // Add upgrade costs
+                    const upgrades = {
+                        damage: this.gameInitializer.upgradeSystem.getUpgradeCost('damage'),
+                        speed: this.gameInitializer.upgradeSystem.getUpgradeCost('speed'),
+                        defense: this.gameInitializer.upgradeSystem.getUpgradeCost('defense'),
+                        energy: this.gameInitializer.upgradeSystem.getUpgradeCost('energy')
+                    };
+                    state.upgrades = upgrades;
                     
                     window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
                 }

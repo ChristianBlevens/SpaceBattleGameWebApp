@@ -70,6 +70,21 @@ class RenderSystem {
             this.shake(data.duration, data.intensity);
         });
         
+        this.eventBus.on('CAMERA_ZOOM', (data) => {
+            // Zoom based on scroll direction (flipped)
+            const zoomSpeed = 0.2; // Increased speed
+            const minZoom = 0.1; // No limit on zoom out
+            const maxZoom = 0.4; // Limit zoom in to current default
+            
+            if (data.delta > 0) {
+                // Scroll down - zoom in
+                this.targetZoom = Math.max(minZoom, this.targetZoom - zoomSpeed);
+            } else {
+                // Scroll up - zoom out
+                this.targetZoom = Math.min(maxZoom, this.targetZoom + zoomSpeed);
+            }
+        });
+        
         // Game message events
         this.eventBus.on('SHOW_GAME_MESSAGE', (data) => {
             this.createGameMessage(data);
@@ -172,7 +187,13 @@ class RenderSystem {
                         alpha: { from: 1, to: 0.8 },
                         duration: 200,
                         yoyo: true,
-                        repeat: -1
+                        repeat: -1,
+                        onUpdate: () => {
+                            // Stop tween if sprite or body is destroyed
+                            if (!sprite || !sprite.body || !sprite.active) {
+                                this.scene.tweens.killTweensOf(sprite);
+                            }
+                        }
                     });
                 }
             }
@@ -356,16 +377,18 @@ class RenderSystem {
         // Follow player
         this.scene.cameras.main.startFollow(playerSprite, true, 0.1, 0.1);
         
-        // Dynamic zoom based on velocity
+        // Dynamic zoom based on velocity as a modifier
         if (playerSprite.body) {
             const vel = playerSprite.body.velocity;
             const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
-            this.targetZoom = 0.4 - (speed / 100) * 0.1; // Zoom out when moving fast
-            this.targetZoom = Math.max(0.25, Math.min(0.5, this.targetZoom));
+            const dynamicModifier = 1 - (speed / 100) * 0.2; // Zoom out up to 20% when moving fast
+            const modifiedZoom = this.targetZoom * dynamicModifier;
+            this.cameraZoom += (modifiedZoom - this.cameraZoom) * 0.02;
+        } else {
+            // Smooth zoom transition without dynamic modifier
+            this.cameraZoom += (this.targetZoom - this.cameraZoom) * 0.02;
         }
         
-        // Smooth zoom transition
-        this.cameraZoom += (this.targetZoom - this.cameraZoom) * 0.02;
         this.scene.cameras.main.setZoom(this.cameraZoom);
         
         // Update shake
@@ -995,6 +1018,8 @@ class RenderSystem {
     destroySprite(entityId) {
         const sprite = this.scene.sprites.get(entityId);
         if (sprite) {
+            // Stop all tweens on this sprite before destroying
+            this.scene.tweens.killTweensOf(sprite);
             sprite.destroy();
             this.scene.sprites.delete(entityId);
         }
@@ -1090,7 +1115,6 @@ class RenderSystem {
     
     createEnvironment() {
         this.createBackground();
-        this.createGalacticSpiral();
     }
     
     createBackground() {
@@ -1126,72 +1150,23 @@ class RenderSystem {
         }
     }
     
-    createGalacticSpiral() {
-        const centerX = GameConfig.world.centerX;
-        const centerY = GameConfig.world.centerY;
+    createCatastropheVisual() {
+        // This will be called after entities are created to attach visual to the catastrophe entity
+        if (!this.scene.catastropheId) return;
+        
+        const catastropheTransform = this.entityManager.getComponent(this.scene.catastropheId, 'transform');
+        if (!catastropheTransform) return;
         
         const spiral = this.scene.add.graphics();
-        spiral.lineStyle(3, 0x6600ff, 0.3);
         
-        // Create spiral arms
-        for (let arm = 0; arm < 3; arm++) {
-            const angleOffset = (arm * Math.PI * 2) / 3;
-            spiral.beginPath();
-            
-            for (let i = 0; i < 200; i++) {
-                const angle = angleOffset + (i * 0.05);
-                const radius = 100 + (i * 8);
-                const x = centerX + Math.cos(angle) * radius;
-                const y = centerY + Math.sin(angle) * radius;
-                
-                if (i === 0) {
-                    spiral.moveTo(x, y);
-                } else {
-                    spiral.lineTo(x, y);
-                }
-                
-                // Add glowing stars
-                if (i % 10 === 0) {
-                    const star = this.scene.add.sprite(x, y, 'particle');
-                    star.setScale(2);
-                    star.setTint(0x9966ff);
-                    star.setAlpha(0.5);
-                    
-                    this.scene.tweens.add({
-                        targets: star,
-                        alpha: { from: 0.5, to: 0.2 },
-                        scale: { from: 2, to: 3 },
-                        duration: 2000,
-                        yoyo: true,
-                        repeat: -1,
-                        delay: Math.random() * 2000
-                    });
-                }
-            }
-            
-            spiral.strokePath();
-        }
+        // Store spiral graphics reference
+        this.scene.catastropheSpiral = spiral;
         
         // Animate spiral rotation
         this.scene.tweens.add({
             targets: spiral,
             rotation: Math.PI * 2,
-            duration: 120000,
-            repeat: -1
-        });
-        
-        // Central black hole
-        const blackHole = this.scene.add.sprite(centerX, centerY, 'shockwave');
-        blackHole.setScale(2);
-        blackHole.setTint(0x000000);
-        blackHole.setAlpha(0.8);
-        
-        this.scene.tweens.add({
-            targets: blackHole,
-            scale: { from: 2, to: 2.5 },
-            alpha: { from: 0.8, to: 0.5 },
-            duration: 3000,
-            yoyo: true,
+            duration: 3000, // Fast rotation
             repeat: -1
         });
     }

@@ -83,6 +83,24 @@ class CombatSystem {
                         });
                     }
                 }
+            } else {
+                // Check if target is a planet - planets block projectiles
+                const targetEntity = this.entityManager.getEntity(entityB);
+                if (targetEntity && targetEntity.type === 'planet') {
+                    // Destroy projectile when it hits a planet
+                    this.eventBus.emit('DESTROY_ENTITY', {
+                        entityId: entityA
+                    });
+                    
+                    // Create impact effect
+                    const transform = this.entityManager.getComponent(entityA, 'transform');
+                    if (transform) {
+                        this.eventBus.emit('PROJECTILE_EXPIRED', {
+                            projectileId: entityA,
+                            position: { x: transform.x, y: transform.y }
+                        });
+                    }
+                }
             }
         } else if (type === 'powerup') {
             // Handle powerup collection

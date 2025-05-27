@@ -117,6 +117,14 @@ document.addEventListener('alpine:init', () => {
                     this.upgradeCosts = state.upgrades;
                     this.cheapestUpgrade = Math.min(...Object.values(state.upgrades));
                 }
+                
+                // Update charging state
+                if ('charging' in state) {
+                    this.charging = state.charging;
+                }
+                if ('chargePercent' in state) {
+                    this.chargePercent = state.chargePercent;
+                }
             });
             
             // Listen for UI events
@@ -162,11 +170,11 @@ const GameConfig = {
     
     // Physics constants
     physics: {
-        gravity: 0.01,
+        gravity: 10.0,  // Much stronger gravity to be noticeable
         spiralForce: 0.0003,
         damping: 0.999,
         maxVelocity: 15,
-        gravitationFalloff: 1.5
+        gravitationFalloff: 1.5  // Lower falloff for longer range gravity
     },
     
     // Player settings

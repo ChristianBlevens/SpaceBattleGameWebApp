@@ -246,19 +246,13 @@ class UIManager {
     }
     
     updateChargeIndicator(percent) {
-        const indicator = document.querySelector('.charge-indicator');
-        if (indicator) {
-            if (percent > 0) {
-                indicator.style.display = 'block';
-                const progress = indicator.querySelector('.charge-progress');
-                if (progress) {
-                    const circumference = 283; // 2 * PI * 45 (radius)
-                    progress.style.strokeDashoffset = circumference - (circumference * percent / 100);
-                }
-            } else {
-                indicator.style.display = 'none';
+        // Update via Alpine.js data
+        window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+            detail: {
+                charging: percent > 0,
+                chargePercent: percent
             }
-        }
+        }));
     }
     
     updateUpgradeDisplay(data) {

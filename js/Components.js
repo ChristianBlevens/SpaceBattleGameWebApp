@@ -38,14 +38,14 @@ const Components = {
         spread: 0
     }),
     
-    ai: (behavior = 'basic', aggroRange = 500) => ({
+    ai: (behavior = 'basic', faction = 'swarm') => ({
         behavior,
-        aggroRange,
+        aggroRange: 500,
         targetId: null,
         state: 'idle',
         fearLevel: 0,
         lastThought: 0,
-        faction: 'neutral',
+        faction: faction,
         memory: {},
         decisionTimer: 0,
         reactionTime: 200,

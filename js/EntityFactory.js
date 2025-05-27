@@ -33,7 +33,8 @@ class EntityFactory {
         
         // Create Matter.js sprite
         const sprite = this.scene.matter.add.sprite(x, y, 'player');
-        sprite.setCircle(40);
+        // Player texture is 32x16, so use average for circle hitbox
+        sprite.setCircle(12);
         sprite.setMass(15);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
@@ -90,7 +91,17 @@ class EntityFactory {
         
         // Create sprite
         const sprite = this.scene.matter.add.sprite(x, y, `enemy-${faction}`);
-        sprite.setCircle(25 * factionConfig.size);
+        
+        // Set hitbox based on faction sprite size
+        const hitboxSizes = {
+            swarm: 6,    // 24x12 sprite
+            sentinel: 12, // 28x20 sprite
+            phantom: 12,  // 32x16 sprite
+            titan: 18    // 40x32 sprite
+        };
+        
+        const baseHitbox = hitboxSizes[faction] || 10;
+        sprite.setCircle(baseHitbox * factionConfig.size);
         sprite.setMass(10 * factionConfig.size);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
@@ -113,9 +124,9 @@ class EntityFactory {
     
     createPlanet(x, y, size = 'medium') {
         const sizeConfig = {
-            small: { radius: 40, mass: 20, texture: 'planet-small' },
-            medium: { radius: 60, mass: 50, texture: 'planet-medium' },
-            large: { radius: 80, mass: 100, texture: 'planet-large' }
+            small: { radius: 40, mass: 200, texture: 'planet-small' },
+            medium: { radius: 60, mass: 600, texture: 'planet-medium' },
+            large: { radius: 80, mass: 1200, texture: 'planet-large' }
         };
         
         const config = sizeConfig[size];
@@ -129,13 +140,13 @@ class EntityFactory {
         
         // Create sprite
         const sprite = this.scene.matter.add.sprite(x, y, config.texture);
+        // Set the circle hitbox to match the exact visual size
         sprite.setCircle(config.radius);
         sprite.setMass(config.mass);
         sprite.setStatic(false);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
         sprite.setBounce(0.9);
-        sprite.setScale(config.radius / 80);
         sprite.setData('entityId', planetId);
         sprite.setData('entityType', 'planet');
         
@@ -273,6 +284,45 @@ class EntityFactory {
         this.scene.projectileGroup.add(sprite);
         
         return projectileId;
+    }
+    
+    createCatastrophe(x, y) {
+        // Create combined catastrophe entity (vortex + galactic spiral)
+        const catastropheId = this.entityManager.createEntity('catastrophe', {
+            transform: Components.transform(x, y, 0, 1),
+            physics: Components.physics(0, 0, 2000, 300), // Massive wandering catastrophe
+            sprite: Components.sprite('vortex'),
+            catastrophe: {
+                strength: 400,  // Much less intense pull
+                radius: 1500,     // Close immunity trigger radius
+                pullRadius: 2000, // Smaller pull radius
+                rotationSpeed: 4,
+                immunityTriggerTime: 2000, // 2 seconds near it
+                immunityDuration: 10000 // 10 seconds immunity
+            }
+        });
+        
+        // Create sprite
+        const sprite = this.scene.matter.add.sprite(x, y, 'vortex');
+        sprite.setScale(3); // Large catastrophe
+        sprite.setCircle(300);
+        sprite.setSensor(true); // Don't collide, just pull
+        sprite.setStatic(false); // Can move
+        sprite.setData('entityId', catastropheId);
+        sprite.setData('entityType', 'catastrophe');
+        
+        this.scene.sprites.set(catastropheId, sprite);
+        
+        // Store on scene for special rendering
+        this.scene.catastropheId = catastropheId;
+        
+        // Emit entity created event
+        this.eventBus.emit('ENTITY_CREATED', {
+            id: catastropheId,
+            type: 'catastrophe'
+        });
+        
+        return catastropheId;
     }
 }
 

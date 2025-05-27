@@ -17,6 +17,11 @@ class InputSystem {
         this.moveVector = { x: 0, y: 0 };
         this.aimAngle = 0;
         this.isShooting = false;
+        
+        // Dash cooldown
+        this.dashCooldown = 0;
+        this.dashCooldownTime = 5000; // 5 seconds
+        this.dashSpeed = 25; // Minimum dash speed
     }
     
     init() {
@@ -38,7 +43,7 @@ class InputSystem {
             left: Phaser.Input.Keyboard.KeyCodes.A,
             right: Phaser.Input.Keyboard.KeyCodes.D,
             boost: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-            brake: Phaser.Input.Keyboard.KeyCodes.SPACE,
+            dash: Phaser.Input.Keyboard.KeyCodes.SPACE,
             pause: Phaser.Input.Keyboard.KeyCodes.ESC,
             debug: Phaser.Input.Keyboard.KeyCodes.F1,
             ability1: Phaser.Input.Keyboard.KeyCodes.ONE,
@@ -56,6 +61,11 @@ class InputSystem {
         // Debug toggle
         this.keys.debug.on('down', () => {
             this.eventBus.emit('debug:toggle');
+        });
+        
+        // Dash on space bar
+        this.keys.dash.on('down', () => {
+            this.eventBus.emit('PLAYER_ABILITY', { ability: 'dash' });
         });
         
         // Ability shortcuts
@@ -82,6 +92,13 @@ class InputSystem {
         
         this.scene.input.on('pointerup', () => {
             this.isShooting = false;
+        });
+        
+        // Scroll wheel zoom
+        this.scene.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+            this.eventBus.emit('CAMERA_ZOOM', {
+                delta: deltaY
+            });
         });
     }
     
@@ -171,6 +188,11 @@ class InputSystem {
             console.log('[InputSystem] Got player ID:', this.playerId);
         }
         
+        // Update dash cooldown
+        if (this.dashCooldown > 0) {
+            this.dashCooldown -= deltaTime * 1000;
+        }
+        
         // Update movement vector
         this.updateMovement();
         
@@ -182,6 +204,9 @@ class InputSystem {
         
         // Apply movement to player
         this.applyPlayerMovement();
+        
+        // Handle dash
+        this.handleDash();
     }
     
     updateMovement() {
@@ -194,10 +219,6 @@ class InputSystem {
         if (this.keys.up.isDown) this.moveVector.y -= 1;
         if (this.keys.down.isDown) this.moveVector.y += 1;
         
-        // Debug log when movement is detected
-        if (this.moveVector.x !== 0 || this.moveVector.y !== 0) {
-            console.log('[InputSystem] Movement detected:', this.moveVector);
-        }
         
         // Touch input
         if (this.touchControls) {
@@ -266,16 +287,24 @@ class InputSystem {
     }
     
     applyPlayerMovement() {
-        if (this.moveVector.x === 0 && this.moveVector.y === 0) return;
-        
         const playerSprite = this.scene.sprites.get(this.playerId);
-        if (!playerSprite) {
-            console.log('[InputSystem] No player sprite found for ID:', this.playerId);
+        if (!playerSprite || !playerSprite.body) {
+            if (!playerSprite) {
+                console.log('[InputSystem] No player sprite found for ID:', this.playerId);
+            }
             return;
         }
         
+        const physics = this.entityManager.getComponent(this.playerId, 'physics');
+        if (!physics) return;
+        
+        // Normal movement force calculation
         const stats = this.gameState.get('player.stats');
-        const force = (stats.speed || GameConfig.player.baseSpeed) * 0.001;
+        const baseForce = (stats.speed || GameConfig.player.baseSpeed) * 0.5; // Much stronger force
+        
+        // Better acceleration from stop
+        const currentSpeed = Math.sqrt(physics.velocity.x ** 2 + physics.velocity.y ** 2);
+        const accelerationBoost = currentSpeed < 2 ? 2.0 : 1.0;
         
         // Apply boost if shift is held
         let boostMultiplier = 1;
@@ -287,14 +316,79 @@ class InputSystem {
             }
         }
         
-        // Apply force to the Matter.js body
-        if (playerSprite.body) {
-            const forceVector = {
-                x: this.moveVector.x * force * boostMultiplier,
-                y: this.moveVector.y * force * boostMultiplier
-            };
-            Matter.Body.applyForce(playerSprite.body, playerSprite.body.position, forceVector);
+        // Apply movement force if there's input
+        if (this.moveVector.x !== 0 || this.moveVector.y !== 0) {
+            const forceX = this.moveVector.x * baseForce * boostMultiplier * accelerationBoost;
+            const forceY = this.moveVector.y * baseForce * boostMultiplier * accelerationBoost;
+            
+            // DIRECTLY SET VELOCITY ON PHYSICS COMPONENT
+            physics.velocity.x += forceX;
+            physics.velocity.y += forceY;
+            
+            // Apply velocity to sprite immediately
+            playerSprite.setVelocity(physics.velocity.x, physics.velocity.y);
         }
+        
+    }
+    
+    handleDash() {
+        if (!this.keys.dash.isDown || this.dashCooldown > 0) return;
+        
+        const playerSprite = this.scene.sprites.get(this.playerId);
+        if (!playerSprite || !playerSprite.body) return;
+        
+        const physics = this.entityManager.getComponent(this.playerId, 'physics');
+        if (!physics) return;
+        
+        // Set cooldown
+        this.dashCooldown = this.dashCooldownTime;
+        
+        // Calculate dash direction from input or current velocity
+        let dashX = this.moveVector.x;
+        let dashY = this.moveVector.y;
+        
+        // If no input, dash in current movement direction
+        if (dashX === 0 && dashY === 0) {
+            const speed = Math.sqrt(physics.velocity.x ** 2 + physics.velocity.y ** 2);
+            if (speed > 0.1) {
+                dashX = physics.velocity.x / speed;
+                dashY = physics.velocity.y / speed;
+            } else {
+                // No input and not moving, dash forward
+                dashX = Math.cos(playerSprite.rotation);
+                dashY = Math.sin(playerSprite.rotation);
+            }
+        }
+        
+        // Normalize dash direction
+        const dashMag = Math.sqrt(dashX * dashX + dashY * dashY);
+        if (dashMag > 0) {
+            dashX /= dashMag;
+            dashY /= dashMag;
+        }
+        
+        // Calculate current speed in dash direction
+        const currentSpeedInDashDir = physics.velocity.x * dashX + physics.velocity.y * dashY;
+        
+        // If going slower than dash speed in that direction, set to dash speed
+        if (currentSpeedInDashDir < this.dashSpeed) {
+            physics.velocity.x = dashX * this.dashSpeed;
+            physics.velocity.y = dashY * this.dashSpeed;
+        } else {
+            // Already going fast, add boost
+            physics.velocity.x += dashX * 10;
+            physics.velocity.y += dashY * 10;
+        }
+        
+        // Apply new velocity to sprite
+        playerSprite.setVelocity(physics.velocity.x, physics.velocity.y);
+        
+        // Emit dash event for visual effects
+        this.eventBus.emit('PLAYER_DASH', {
+            x: playerSprite.x,
+            y: playerSprite.y,
+            angle: Math.atan2(dashY, dashX)
+        });
     }
     
     getMoveVector() {

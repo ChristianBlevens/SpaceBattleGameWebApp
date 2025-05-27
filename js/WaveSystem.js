@@ -31,6 +31,11 @@ class WaveSystem {
         this.eventBus.on('GAME_START', () => {
             this.reset();
         });
+        
+        // Listen for enemy deaths to check wave completion
+        this.eventBus.on('ENEMY_KILLED', () => {
+            this.checkWaveComplete();
+        });
     }
     
     reset() {
@@ -250,6 +255,61 @@ class WaveSystem {
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         return shuffled;
+    }
+    
+    checkWaveComplete() {
+        const enemiesRemaining = this.gameState.get('waves.enemiesRemaining');
+        const waveInProgress = this.gameState.get('waves.waveInProgress');
+        
+        console.log('[WaveSystem] Checking wave complete:', {
+            enemiesRemaining,
+            waveInProgress,
+            spawnsRemaining: this.spawnsRemaining
+        });
+        
+        if (waveInProgress && enemiesRemaining <= 0 && this.spawnsRemaining <= 0) {
+            // Wave complete!
+            const waveNumber = this.currentWave;
+            const waveConfig = this.waveConfigs[waveNumber];
+            
+            // Update state
+            this.gameState.update('waves.waveInProgress', false);
+            
+            // Calculate rewards
+            const baseReward = 500 * waveNumber;
+            const pointReward = 1000 * waveNumber;
+            
+            this.gameState.addCredits(baseReward);
+            this.gameState.addScore(pointReward);
+            
+            // Emit wave complete event
+            this.eventBus.emit('WAVE_COMPLETE', {
+                waveNumber: waveNumber,
+                isBossWave: waveConfig.isBossWave
+            });
+            
+            // Emit rewards event
+            this.eventBus.emit('WAVE_REWARDS', {
+                waveNumber: waveNumber,
+                credits: baseReward,
+                points: pointReward
+            });
+            
+            // Play victory sound
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
+            
+            // Start next wave after delay
+            this.scene.time.delayedCall(5000, () => {
+                const nextWave = waveNumber + 1;
+                if (nextWave <= 20) { // Max 20 waves
+                    console.log('[WaveSystem] Starting next wave:', nextWave);
+                    this.startWave(nextWave);
+                } else {
+                    // Game victory!
+                    this.eventBus.emit('GAME_VICTORY');
+                }
+            });
+        }
     }
     
     getCurrentWaveInfo() {
