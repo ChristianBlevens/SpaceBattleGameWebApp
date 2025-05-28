@@ -145,6 +145,25 @@ class UIManager {
         this.eventBus.on('UI_SHOW_MESSAGE', (data) => {
             this.showMessage(data.message, data.type, data.duration);
         });
+        
+        // Disaster events
+        this.eventBus.on('disasterWarning', (data) => {
+            this.showDisasterWarning(data);
+        });
+        
+        this.eventBus.on('disasterStart', (data) => {
+            this.showDisaster(data);
+        });
+        
+        this.eventBus.on('disasterEnd', (data) => {
+            this.hideDisaster();
+        });
+        
+        this.eventBus.on('disableAbilities', (disabled) => {
+            window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+                detail: { abilitiesDisabled: disabled }
+            }));
+        });
     }
     
     startUpdateLoop() {
@@ -359,10 +378,77 @@ class UIManager {
         }
     }
     
+    // Disaster UI methods
+    showDisasterWarning(data) {
+        window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+            detail: { 
+                disasterWarning: true,
+                disasterWarningMessage: data.message || 'Disaster Incoming!'
+            }
+        }));
+        
+        // Hide warning after specified time
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+                detail: { disasterWarning: false }
+            }));
+        }, data.time || 3000);
+    }
+    
+    showDisaster(data) {
+        window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+            detail: { 
+                activeDisaster: {
+                    type: data.type,
+                    name: data.name,
+                    duration: data.duration,
+                    elapsed: 0
+                }
+            }
+        }));
+        
+        // Show notification
+        this.showNotification(`${data.name} Active!`, 'danger', 'fa-radiation');
+        
+        // Update elapsed time
+        this.disasterUpdateInterval = setInterval(() => {
+            window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+                detail: { 
+                    activeDisaster: {
+                        type: data.type,
+                        name: data.name,
+                        duration: data.duration,
+                        elapsed: (Date.now() - this.disasterStartTime)
+                    }
+                }
+            }));
+        }, 100);
+        
+        this.disasterStartTime = Date.now();
+    }
+    
+    hideDisaster() {
+        if (this.disasterUpdateInterval) {
+            clearInterval(this.disasterUpdateInterval);
+            this.disasterUpdateInterval = null;
+        }
+        
+        window.dispatchEvent(new CustomEvent('gameStateUpdate', {
+            detail: { activeDisaster: null }
+        }));
+        
+        this.showNotification('Disaster Ended', 'success', 'fa-check-circle');
+    }
+    
     // Clean up
     destroy() {
         // Clear event queue
         this.eventQueue = [];
+        
+        // Clear disaster interval
+        if (this.disasterUpdateInterval) {
+            clearInterval(this.disasterUpdateInterval);
+        }
     }
     
     // Static method to show charge indicator (called from InputSystem)

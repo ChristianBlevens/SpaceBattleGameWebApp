@@ -62,7 +62,7 @@ class EntityFactory {
     }
     
     createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}, strengthMultiplier = 1) {
-        console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity, strengthMultiplier });
+        //console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity, strengthMultiplier });
         
         const factionConfig = GameConfig.factions[faction];
         if (!factionConfig) {
@@ -70,13 +70,13 @@ class EntityFactory {
             return null;
         }
         
-        console.log('[EntityFactory] Faction config:', factionConfig);
+        //console.log('[EntityFactory] Faction config:', factionConfig);
         
         // Apply strength multiplier to stats
         const enhancedHealth = Math.floor(factionConfig.health * strengthMultiplier);
         const enhancedDamage = Math.floor(factionConfig.damage * strengthMultiplier);
         
-        console.log(`[EntityFactory] Creating ${faction} with health: ${enhancedHealth}, damage: ${enhancedDamage}`);
+        //console.log(`[EntityFactory] Creating ${faction} with health: ${enhancedHealth}, damage: ${enhancedDamage}`);
         
         // Create enemy entity
         const enemyId = this.entityManager.createEntity('enemy', {
@@ -94,7 +94,7 @@ class EntityFactory {
             faction: Components.faction(faction, factionConfig.color, [faction])
         });
         
-        console.log('[EntityFactory] Enemy entity created with ID:', enemyId);
+        //console.log('[EntityFactory] Enemy entity created with ID:', enemyId);
         
         // Create sprite
         const sprite = this.scene.matter.add.sprite(x, y, `enemy-${faction}`);
@@ -118,14 +118,14 @@ class EntityFactory {
         sprite.setData('entityId', enemyId);
         sprite.setData('entityType', 'enemy');
         
-        console.log('[EntityFactory] Enemy sprite created');
+        //console.log('[EntityFactory] Enemy sprite created');
         
         // Store references
         sprite.setDepth(15); // Enemies above vortex
         this.scene.sprites.set(enemyId, sprite);
         this.scene.enemyGroup.add(sprite);
         
-        console.log('[EntityFactory] Enemy added to groups, total enemies:', this.scene.enemyGroup.children.size);
+        //console.log('[EntityFactory] Enemy added to groups, total enemies:', this.scene.enemyGroup.children.size);
         
         return enemyId;
     }

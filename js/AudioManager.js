@@ -64,7 +64,7 @@ class AudioManager {
         const volume = options.volume || 1.0;
         
         // Log sound play
-        console.log(`[AudioManager] Playing sound: ${soundName}`);
+        //console.log(`[AudioManager] Playing sound: ${soundName}`);
         
         // In a real implementation, this would play the actual sound
         // For now, we just simulate it
@@ -78,13 +78,13 @@ class AudioManager {
     simulateSound(soundDef, volume) {
         // This would be replaced with actual Web Audio API or Howler.js implementation
         // For now, just log it
-        console.log(`[AudioManager] Sound: ${JSON.stringify(soundDef)} at volume ${volume}`);
+        //console.log(`[AudioManager] Sound: ${JSON.stringify(soundDef)} at volume ${volume}`);
     }
     
     playMusic(track) {
         if (!this.initialized || this.muted) return;
         
-        console.log(`[AudioManager] Playing background music: ${track || 'default'}`);
+        //console.log(`[AudioManager] Playing background music: ${track || 'default'}`);
         // Placeholder for music playback
         this.music = {
             playing: true,
@@ -96,7 +96,7 @@ class AudioManager {
     stopMusic() {
         if (!this.initialized) return;
         
-        console.log('[AudioManager] Stopping background music');
+        //console.log('[AudioManager] Stopping background music');
         if (this.music) {
             this.music.playing = false;
         }
@@ -105,23 +105,23 @@ class AudioManager {
     stop(soundName) {
         if (!this.initialized) return;
         
-        console.log(`[AudioManager] Stopping sound: ${soundName}`);
+        //console.log(`[AudioManager] Stopping sound: ${soundName}`);
         // Placeholder for stopping specific sounds
     }
     
     setVolume(type, volume) {
         if (type === 'music') {
             this.musicVolume = Math.max(0, Math.min(1, volume));
-            console.log(`[AudioManager] Music volume set to ${this.musicVolume}`);
+            //console.log(`[AudioManager] Music volume set to ${this.musicVolume}`);
         } else if (type === 'effects') {
             this.effectsVolume = Math.max(0, Math.min(1, volume));
-            console.log(`[AudioManager] Effects volume set to ${this.effectsVolume}`);
+            //console.log(`[AudioManager] Effects volume set to ${this.effectsVolume}`);
         }
     }
     
     setMute(muted) {
         this.muted = muted;
-        console.log(`[AudioManager] Mute: ${muted}`);
+        //console.log(`[AudioManager] Mute: ${muted}`);
         
         if (muted && this.music && this.music.playing) {
             this.stopMusic();

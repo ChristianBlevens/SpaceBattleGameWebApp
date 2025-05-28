@@ -45,6 +45,11 @@ document.addEventListener('alpine:init', () => {
         dashCooldown: 0,
         maxDashCooldown: 2000, // 2 seconds
         
+        // Disaster state
+        disasterWarning: false,
+        activeDisaster: null,
+        abilitiesDisabled: false,
+        
         // Methods
         quickUpgrade(type) {
             window.dispatchEvent(new CustomEvent('gameCommand', {
@@ -131,6 +136,17 @@ document.addEventListener('alpine:init', () => {
                 // Update dash cooldown
                 if (state.player && 'dashCooldown' in state.player) {
                     this.dashCooldown = state.player.dashCooldown || 0;
+                }
+                
+                // Update disaster state
+                if ('disasterWarning' in state) {
+                    this.disasterWarning = state.disasterWarning;
+                }
+                if ('activeDisaster' in state) {
+                    this.activeDisaster = state.activeDisaster;
+                }
+                if ('abilitiesDisabled' in state) {
+                    this.abilitiesDisabled = state.abilitiesDisabled;
                 }
             });
             

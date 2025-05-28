@@ -59,24 +59,24 @@ class WaveSystem {
         this.gameState.update('waves.totalEnemies', waveConfig.totalEnemies);
         this.gameState.update('waves.spawnsRemaining', waveConfig.totalEnemies);
         
-        console.log('[WaveSystem] Wave started:', {
-            waveNumber,
-            totalEnemies: waveConfig.totalEnemies,
-            waveInProgress: true
-        });
+        //console.log('[WaveSystem] Wave started:', {
+            //waveNumber,
+            //totalEnemies: waveConfig.totalEnemies,
+            //waveInProgress: true
+        //});
         
         // Store wave config
         this.waveConfigs[waveNumber] = waveConfig;
         this.spawnsRemaining = waveConfig.totalEnemies;
         this.nextSpawnTime = 0;
         
-        console.log('[WaveSystem] Wave config generated:', {
-            wave: waveNumber,
-            totalEnemies: waveConfig.totalEnemies,
-            spawnsRemaining: this.spawnsRemaining,
-            spawnDelay: waveConfig.spawnDelay,
-            spawns: waveConfig.spawns
-        });
+        //console.log('[WaveSystem] Wave config generated:', {
+            //wave: waveNumber,
+            //totalEnemies: waveConfig.totalEnemies,
+            //spawnsRemaining: this.spawnsRemaining,
+            //spawnDelay: waveConfig.spawnDelay,
+            //spawns: waveConfig.spawns
+        //});
         
         // Emit wave announcement event
         this.eventBus.emit('WAVE_ANNOUNCED', {
@@ -204,7 +204,7 @@ class WaveSystem {
         
         const waveConfig = this.waveConfigs[this.currentWave];
         if (!waveConfig) {
-            console.log('[WaveSystem] update: No wave config for wave', this.currentWave);
+            //console.log('[WaveSystem] update: No wave config for wave', this.currentWave);
             return;
         }
         
@@ -215,7 +215,7 @@ class WaveSystem {
             // Spawn next enemy
             const spawnInfo = waveConfig.spawns[waveConfig.totalEnemies - this.spawnsRemaining];
             if (spawnInfo) {
-                console.log('[WaveSystem] Spawning enemy:', spawnInfo);
+                //console.log('[WaveSystem] Spawning enemy:', spawnInfo);
                 this.spawnEnemy(spawnInfo);
                 this.spawnsRemaining--;
                 this.gameState.update('waves.spawnsRemaining', this.spawnsRemaining);
@@ -227,7 +227,7 @@ class WaveSystem {
     }
     
     spawnEnemy(spawnInfo) {
-        console.log('[WaveSystem] spawnEnemy called with:', spawnInfo);
+        //console.log('[WaveSystem] spawnEnemy called with:', spawnInfo);
         
         let x, y;
         
@@ -246,7 +246,7 @@ class WaveSystem {
         x = Math.max(100, Math.min(GameConfig.world.width - 100, x));
         y = Math.max(100, Math.min(GameConfig.world.height - 100, y));
         
-        console.log('[WaveSystem] Spawn position:', { x, y });
+        //console.log('[WaveSystem] Spawn position:', { x, y });
         
         // Get faction config
         const factionConfig = GameConfig.factions[spawnInfo.faction];
@@ -266,7 +266,7 @@ class WaveSystem {
             y: Math.sin(angle) * speed
         };
         
-        console.log('[WaveSystem] Creating enemy with velocity:', initialVelocity);
+        //console.log('[WaveSystem] Creating enemy with velocity:', initialVelocity);
         
         // Create enemy using factory with strength multiplier
         const waveConfig = this.waveConfigs[this.currentWave];
@@ -280,7 +280,7 @@ class WaveSystem {
             strengthMultiplier
         );
         
-        console.log('[WaveSystem] Enemy created with ID:', enemyId);
+        //console.log('[WaveSystem] Enemy created with ID:', enemyId);
         
         // Emit spawn event for other systems
         this.eventBus.emit('ENEMY_SPAWNED', {
@@ -303,11 +303,11 @@ class WaveSystem {
         const enemiesRemaining = this.gameState.get('waves.enemiesRemaining');
         const waveInProgress = this.gameState.get('waves.waveInProgress');
         
-        console.log('[WaveSystem] Checking wave complete:', {
-            enemiesRemaining,
-            waveInProgress,
-            spawnsRemaining: this.spawnsRemaining
-        });
+        //console.log('[WaveSystem] Checking wave complete:', {
+            //enemiesRemaining,
+            //waveInProgress,
+            //spawnsRemaining: this.spawnsRemaining
+        //});
         
         if (waveInProgress && enemiesRemaining <= 0 && this.spawnsRemaining <= 0) {
             // Wave complete!
@@ -344,7 +344,7 @@ class WaveSystem {
             this.scene.time.delayedCall(5000, () => {
                 const nextWave = waveNumber + 1;
                 if (nextWave <= 20) { // Max 20 waves
-                    console.log('[WaveSystem] Starting next wave:', nextWave);
+                    //console.log('[WaveSystem] Starting next wave:', nextWave);
                     this.startWave(nextWave);
                 } else {
                     // Game victory!

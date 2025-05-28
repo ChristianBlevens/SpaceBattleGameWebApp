@@ -79,7 +79,7 @@ class CombatSystem {
                     projectileData.hitEntities.add(entityB);
                     
                     // Apply damage
-                    console.log(`[CombatSystem] Projectile hit: ${projectileData.damage} damage from ${projectileData.ownerId}`);
+                    //console.log(`[CombatSystem] Projectile hit: ${projectileData.damage} damage from ${projectileData.ownerId}`);
                     this.applyDamage(entityB, projectileData.damage, entityA);
                     
                     // Destroy projectile if not penetrating
@@ -202,7 +202,7 @@ class CombatSystem {
         
         if (!health) return;
         
-        console.log(`[CombatSystem] Damaging enemy ${enemyId}: ${damage} damage, current health: ${health.current}/${health.max}`);
+        //console.log(`[CombatSystem] Damaging enemy ${enemyId}: ${damage} damage, current health: ${health.current}/${health.max}`);
         
         // Apply damage
         health.current -= damage;
@@ -224,7 +224,7 @@ class CombatSystem {
     }
     
     handleEnemyDeath(enemyId, transform) {
-        console.log('[CombatSystem] Enemy death:', enemyId);
+        //console.log('[CombatSystem] Enemy death:', enemyId);
         // Update game state
         const combo = this.gameState.get('game.combo');
         const points = 100 * (combo + 1);
@@ -237,7 +237,7 @@ class CombatSystem {
         this.gameState.update('game.totalKills', totalKills);
         
         const remaining = this.gameState.get('waves.enemiesRemaining') - 1;
-        console.log('[CombatSystem] Enemies remaining after death:', remaining);
+        //console.log('[CombatSystem] Enemies remaining after death:', remaining);
         this.gameState.update('waves.enemiesRemaining', remaining);
         
         // Emit events for other systems
@@ -261,9 +261,9 @@ class CombatSystem {
         
         // Check wave completion
         const spawnsRemaining = this.gameState.get('waves.spawnsRemaining');
-        console.log('[CombatSystem] Wave check - Enemies:', remaining, 'Spawns:', spawnsRemaining);
+        //console.log('[CombatSystem] Wave check - Enemies:', remaining, 'Spawns:', spawnsRemaining);
         if (remaining <= 0 && spawnsRemaining <= 0) {
-            console.log('[CombatSystem] Wave complete! Emitting WAVE_COMPLETE event');
+            //console.log('[CombatSystem] Wave complete! Emitting WAVE_COMPLETE event');
             this.eventBus.emit('WAVE_COMPLETE');
         }
         
@@ -336,13 +336,13 @@ class CombatSystem {
     }
     
     processWaveRewards(waveNumber) {
-        console.log('[CombatSystem] Processing wave rewards for wave', waveNumber);
+        //console.log('[CombatSystem] Processing wave rewards for wave', waveNumber);
         // Calculate and apply wave completion rewards
         const waveBonus = 1000 * waveNumber;
         this.gameState.addScore(waveBonus);
         this.gameState.addCredits(500 * waveNumber);
         
-        console.log('[CombatSystem] Setting waveInProgress to false');
+        //console.log('[CombatSystem] Setting waveInProgress to false');
         this.gameState.update('waves.waveInProgress', false);
         
         // Emit reward event

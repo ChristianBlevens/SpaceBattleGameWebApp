@@ -44,7 +44,7 @@ class AISystem {
         this.eventBus.on('ENTITY_CREATED', (data) => {
             if (data.type === 'player') {
                 this.playerId = data.id;
-                console.log('[AISystem] Player ID set:', this.playerId);
+                //console.log('[AISystem] Player ID set:', this.playerId);
             }
         });
     }
@@ -69,7 +69,7 @@ class AISystem {
         Object.entries(factionGroups).forEach(([faction, entities]) => {
             if (this.factionBehaviors[faction]) {
                 if (entities.length > 0 && Math.random() < 0.01) {
-                    console.log(`[AISystem] Updating ${faction} behavior for ${entities.length} entities`);
+                    //console.log(`[AISystem] Updating ${faction} behavior for ${entities.length} entities`);
                 }
                 this.factionBehaviors[faction].updateGroup(entities, deltaTime, this.playerId);
             }
@@ -762,13 +762,13 @@ class SentinelBehavior extends BaseBehavior {
         // Debug logging for targeting
         if (Math.random() < 0.01) { // 1% chance to log
             const allTargets = this.traits.targeting.findTargets(entityId, transform, 'sentinel');
-            console.log(`[Sentinel ${entityId}] Targeting:`, {
-                hasTarget: !!target,
-                targetId: target?.id || 'none',
-                targetDistance: target?.distance || 'N/A',
-                totalTargetsFound: allTargets.length,
-                detectionRange: this.config.detectionRange
-            });
+            //console.log(`[Sentinel ${entityId}] Targeting:`, {
+                //hasTarget: !!target,
+                //targetId: target?.id || 'none',
+                //targetDistance: target?.distance || 'N/A',
+                //totalTargetsFound: allTargets.length,
+                //detectionRange: this.config.detectionRange
+            //});
         }
         
         // Calculate forces
@@ -802,14 +802,14 @@ class SentinelBehavior extends BaseBehavior {
             
             // Debug logging
             if (Math.random() < 0.01) { // 1% chance to log
-                console.log(`[Sentinel ${entityId}] Combat check:`, {
-                    hasWeapon: !!weapon,
-                    weaponCooldown: weapon?.lastFireTime || 'N/A',
-                    aiCooldown: ai.memory.lastShotTime,
-                    targetDistance: target.distance,
-                    shootingRange: this.config.shootingRange,
-                    canShoot: weapon && weapon.lastFireTime <= 0 && ai.memory.lastShotTime <= 0 && target.distance <= this.config.shootingRange
-                });
+                //console.log(`[Sentinel ${entityId}] Combat check:`, {
+                    //hasWeapon: !!weapon,
+                    //weaponCooldown: weapon?.lastFireTime || 'N/A',
+                    //aiCooldown: ai.memory.lastShotTime,
+                    //targetDistance: target.distance,
+                    //shootingRange: this.config.shootingRange,
+                    //canShoot: weapon && weapon.lastFireTime <= 0 && ai.memory.lastShotTime <= 0 && target.distance <= this.config.shootingRange
+                //});
             }
             
             if (weapon && target.distance <= this.config.shootingRange && 
@@ -820,7 +820,7 @@ class SentinelBehavior extends BaseBehavior {
                 ai.memory.lastShotTime = ai.memory.shotCooldown;
                 
                 // Log successful shot
-                console.log(`[Sentinel ${entityId}] FIRING at target ${target.id} at distance ${target.distance}`);
+                //console.log(`[Sentinel ${entityId}] FIRING at target ${target.id} at distance ${target.distance}`);
             }
         } else {
             // Patrol or maintain formation
@@ -1106,7 +1106,7 @@ class TitanBehavior extends BaseBehavior {
         const sprite = this.scene.sprites.get(entityId);
         
         if (!ai || !transform || !physics || !sprite) {
-            console.log(`[Titan ${entityId}] Missing components:`, { ai: !!ai, transform: !!transform, physics: !!physics, sprite: !!sprite });
+            //console.log(`[Titan ${entityId}] Missing components:`, { ai: !!ai, transform: !!transform, physics: !!physics, sprite: !!sprite });
             return;
         }
         
@@ -1120,7 +1120,7 @@ class TitanBehavior extends BaseBehavior {
             ai.memory.slamCooldown = 0;
             ai.memory.wanderAngle = Math.random() * Math.PI * 2;
             ai.memory.roarTimer = 0;
-            console.log(`[Titan ${entityId}] Initialized`);
+            //console.log(`[Titan ${entityId}] Initialized`);
         }
         
         // Update timers
@@ -1152,7 +1152,7 @@ class TitanBehavior extends BaseBehavior {
                         y: transform.y
                     });
                     
-                    console.log(`[Titan ${entityId}] INITIATING CHARGE! Target: ${target.faction} at ${Math.round(target.distance)} distance`);
+                    //console.log(`[Titan ${entityId}] INITIATING CHARGE! Target: ${target.faction} at ${Math.round(target.distance)} distance`);
                 } else if (target && ai.memory.chargeCooldown > 0) {
                     // On cooldown - aggressively pursue
                     const pursuit = this.traits.movement.moveToward(
@@ -1182,7 +1182,7 @@ class TitanBehavior extends BaseBehavior {
                     // Occasional roar
                     if (ai.memory.roarTimer <= 0) {
                         ai.memory.roarTimer = 5 + Math.random() * 5;
-                        console.log(`[Titan ${entityId}] *ROAR* (wandering)`);
+                        //console.log(`[Titan ${entityId}] *ROAR* (wandering)`);
                     }
                 }
                 break;
@@ -1221,7 +1221,7 @@ class TitanBehavior extends BaseBehavior {
                         ai.memory.chargeTargetId = target.id;
                         ai.memory.lastTargetDistance = target.distance;
                         
-                        console.log(`[Titan ${entityId}] Charge direction locked with prediction!`);
+                        //console.log(`[Titan ${entityId}] Charge direction locked with prediction!`);
                     } else {
                         // No target? Charge forward
                         ai.memory.chargeDirection = {
@@ -1243,7 +1243,7 @@ class TitanBehavior extends BaseBehavior {
                     
                     // Check if we're moving away from target
                     if (ai.memory.lastTargetDistance && currentDistance > ai.memory.lastTargetDistance) {
-                        console.log(`[Titan ${entityId}] Passed target! Was ${ai.memory.lastTargetDistance.toFixed(0)}, now ${currentDistance.toFixed(0)}`);
+                        //console.log(`[Titan ${entityId}] Passed target! Was ${ai.memory.lastTargetDistance.toFixed(0)}, now ${currentDistance.toFixed(0)}`);
                         ai.memory.state = 'hunting';
                         ai.memory.chargeSpeed = 0;
                         ai.memory.chargeDirection = null;
@@ -1266,7 +1266,7 @@ class TitanBehavior extends BaseBehavior {
                 
                 // End charge if no targets in extended range
                 if (!target) {
-                    console.log(`[Titan ${entityId}] Lost all targets, ending charge`);
+                    //console.log(`[Titan ${entityId}] Lost all targets, ending charge`);
                     ai.memory.state = 'hunting';
                     ai.memory.chargeSpeed = 0;
                     ai.memory.chargeDirection = null; // Clear direction
@@ -1286,7 +1286,7 @@ class TitanBehavior extends BaseBehavior {
         
         if (nearVortex && ai.memory.state === 'charging') {
             // Emergency abort charge
-            console.log(`[Titan ${entityId}] VORTEX DANGER! Aborting charge!`);
+            //console.log(`[Titan ${entityId}] VORTEX DANGER! Aborting charge!`);
             ai.memory.state = 'hunting';
             ai.memory.chargeSpeed = 0;
             ai.memory.chargeDirection = null; // Clear direction
@@ -1311,18 +1311,18 @@ class TitanBehavior extends BaseBehavior {
         
         // Debug occasional status
         if (Math.random() < 0.001) {
-            console.log(`[Titan ${entityId}] Status:`, {
-                state: ai.memory.state,
-                chargeSpeed: ai.memory.chargeSpeed.toFixed(1),
-                chargeCooldown: ai.memory.chargeCooldown.toFixed(1),
-                hasTarget: !!target,
-                targetDistance: target?.distance.toFixed(0) || 'N/A'
-            });
+            //console.log(`[Titan ${entityId}] Status:`, {
+                //state: ai.memory.state,
+                //chargeSpeed: ai.memory.chargeSpeed.toFixed(1),
+                //chargeCooldown: ai.memory.chargeCooldown.toFixed(1),
+                //hasTarget: !!target,
+                //targetDistance: target?.distance.toFixed(0) || 'N/A'
+            //});
         }
     }
     
     executeSlam(entityId, transform) {
-        console.log(`[Titan ${entityId}] EXECUTING SLAM!`);
+        //console.log(`[Titan ${entityId}] EXECUTING SLAM!`);
         
         // Set slam cooldown
         const ai = this.entityManager.getComponent(entityId, 'ai');

@@ -36,10 +36,10 @@ class PhysicsSystem {
         this.eventBus.on('ENTITY_CREATED', (data) => {
             if (data.type === 'player') {
                 this.playerId = data.id;
-                console.log('[PhysicsSystem] Player ID set:', this.playerId);
+                //console.log('[PhysicsSystem] Player ID set:', this.playerId);
             } else if (data.type === 'catastrophe') {
                 this.catastropheId = data.id;
-                console.log('[PhysicsSystem] Catastrophe ID set:', this.catastropheId);
+                //console.log('[PhysicsSystem] Catastrophe ID set:', this.catastropheId);
             }
         });
         
@@ -172,9 +172,9 @@ class PhysicsSystem {
         const forceY = (dy / dist) * forceMagnitude * dampeningFactor;
         
         // Debug log planet gravity occasionally
-        if (physicsB.mass > 100 && Math.random() < 0.01) {
-            console.log(`[Gravity] Planet mass ${physicsB.mass} pulling entity at dist ${dist.toFixed(0)}: force ${forceMagnitude.toFixed(2)}`);
-        }
+        //if (physicsB.mass > 100 && Math.random() < 0.01) {
+        //    //console.log(`[Gravity] Planet mass ${physicsB.mass} pulling entity at dist ${dist.toFixed(0)}: force ${forceMagnitude.toFixed(2)}`);
+        //}
         
         return { x: forceX, y: forceY };
     }
@@ -222,7 +222,7 @@ class PhysicsSystem {
                 // Debug log enemy forces
                 const entity = entityManager.getEntity(entityId);
                 if (entity && entity.type === 'enemy' && Math.random() < 0.01) {
-                    console.log(`[Physics] Enemy ${entityId} force: ${forces.x.toFixed(2)}, ${forces.y.toFixed(2)}`);
+                    //console.log(`[Physics] Enemy ${entityId} force: ${forces.x.toFixed(2)}, ${forces.y.toFixed(2)}`);
                 }
             }
         });
@@ -526,7 +526,7 @@ class PhysicsSystem {
                 if (newProximityTime >= catastropheData.immunityTriggerTime) {
                     this.vortexImmunity.set(entityId, currentTime + catastropheData.immunityDuration);
                     this.vortexProximity.delete(entityId);
-                    console.log(`[PhysicsSystem] Entity ${entityId} gained immunity from catastrophe`);
+                    //console.log(`[PhysicsSystem] Entity ${entityId} gained immunity from catastrophe`);
                     
                     // Apply strong ejection force to push entity away
                     const ejectForce = 800;
@@ -571,7 +571,7 @@ class PhysicsSystem {
         for (const [entityId, endTime] of this.vortexImmunity.entries()) {
             if (currentTime > endTime) {
                 this.vortexImmunity.delete(entityId);
-                console.log(`[PhysicsSystem] Entity ${entityId} immunity expired`);
+                //console.log(`[PhysicsSystem] Entity ${entityId} immunity expired`);
             }
         }
     }

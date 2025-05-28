@@ -16,7 +16,7 @@ class WeaponSystem {
         this.eventBus.on('ENTITY_CREATED', (data) => {
             if (data.type === 'player') {
                 this.playerId = data.id;
-                console.log('[WeaponSystem] Player ID set:', this.playerId);
+                //console.log('[WeaponSystem] Player ID set:', this.playerId);
             }
         });
         
@@ -121,7 +121,7 @@ class WeaponSystem {
         const speed = weapon.projectileSpeed * (1 + chargeLevel * 0.5);
         const size = isCharged ? 12 : 8;
         
-        console.log(`[WeaponSystem] Firing weapon: base damage ${weapon.damage}, charge ${chargeLevel}, final damage ${damage}`);
+        //console.log(`[WeaponSystem] Firing weapon: base damage ${weapon.damage}, charge ${chargeLevel}, final damage ${damage}`);
         
         // Spawn position (in front of shooter)
         const spawnDistance = 60;

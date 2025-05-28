@@ -20,6 +20,7 @@ class GameInitializer {
         this.waveSystem = new WaveSystem(scene, this.eventBus, this.gameState, this.entityFactory);
         this.abilitySystem = new AbilitySystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.upgradeSystem = new UpgradeSystem(this.eventBus, this.gameState, this.entityManager);
+        this.disasterSystem = new DisasterSystem(scene);
         
         // Render and input systems
         this.renderSystem = new RenderSystem(scene, this.eventBus, this.entityManager);
@@ -64,6 +65,13 @@ class GameInitializer {
         // Initialize upgrade system
         this.upgradeSystem.init();
         
+        // Initialize disaster system
+        console.log('[GameInitializer] Initializing disaster system with eventBus:', !!this.eventBus);
+        this.disasterSystem.eventBus = this.eventBus;
+        this.disasterSystem.entityManager = this.entityManager;
+        this.disasterSystem.renderSystem = this.renderSystem;
+        this.disasterSystem.init();
+        
         // Set up inter-system communication
         this.setupSystemCommunication();
     }
@@ -89,6 +97,13 @@ class GameInitializer {
         
         // Update wave system
         this.waveSystem.update(dt);
+        
+        // Update disaster system
+        if (!this.disasterSystemLogged && this.disasterSystem) {
+            console.log('[GameInitializer] DisasterSystem update is being called');
+            this.disasterSystemLogged = true;
+        }
+        this.disasterSystem.update(dt);
         
         // Update rendering
         this.renderSystem.update(dt);
