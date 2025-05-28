@@ -24,6 +24,11 @@ class CombatSystem {
         this.eventBus.on('ENEMY_SHOOT_REQUEST', (data) => {
             this.handleEnemyShootRequest(data);
         });
+        
+        // Listen for titan slam attacks
+        this.eventBus.on('TITAN_SLAM', (data) => {
+            this.handleTitanSlam(data);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -346,6 +351,83 @@ class CombatSystem {
             points: waveBonus,
             credits: 500 * waveNumber
         });
+    }
+    
+    handleTitanSlam(data) {
+        const { attackerId, x, y, radius, damage, knockback } = data;
+        
+        // Get attacker faction to avoid friendly fire
+        const attackerAI = this.entityManager.getComponent(attackerId, 'ai');
+        const attackerFaction = attackerAI ? attackerAI.faction : null;
+        
+        // Find all entities in slam radius
+        const affectedEntities = [];
+        const entities = this.entityManager.query('transform', 'health');
+        
+        entities.forEach(entityId => {
+            const transform = this.entityManager.getComponent(entityId, 'transform');
+            if (!transform) return;
+            
+            const dx = transform.x - x;
+            const dy = transform.y - y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < radius) {
+                affectedEntities.push(entityId);
+            }
+        });
+        
+        // Apply damage and knockback to affected entities
+        affectedEntities.forEach(targetId => {
+            if (targetId === attackerId) return; // Don't damage self
+            
+            const targetEntity = this.entityManager.getEntity(targetId);
+            if (!targetEntity) return;
+            
+            // Check if target is damageable
+            const targetAI = this.entityManager.getComponent(targetId, 'ai');
+            const targetHealth = this.entityManager.getComponent(targetId, 'health');
+            
+            // Apply damage to enemies and player
+            if (targetHealth && targetEntity.type !== 'planet' && targetEntity.type !== 'catastrophe') {
+                // Don't damage same faction
+                if (targetAI && targetAI.faction === attackerFaction) return;
+                
+                // Apply damage with falloff
+                const transform = this.entityManager.getComponent(targetId, 'transform');
+                if (transform) {
+                    const dx = transform.x - x;
+                    const dy = transform.y - y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const damageFalloff = 1 - (dist / radius);
+                    const finalDamage = Math.floor(damage * damageFalloff);
+                    
+                    if (finalDamage > 0) {
+                        this.applyDamage(targetId, finalDamage, attackerId);
+                        
+                        // Apply knockback
+                        if (knockback > 0 && dist > 0) {
+                            const physics = this.entityManager.getComponent(targetId, 'physics');
+                            if (physics) {
+                                const knockbackForce = knockback * damageFalloff;
+                                physics.velocity.x += (dx / dist) * knockbackForce / physics.mass;
+                                physics.velocity.y += (dy / dist) * knockbackForce / physics.mass;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Visual effect
+        this.eventBus.emit('TITAN_SHOCKWAVE_VISUAL', {
+            x: x,
+            y: y,
+            radius: radius
+        });
+        
+        // Sound effect
+        this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
     }
 }
 

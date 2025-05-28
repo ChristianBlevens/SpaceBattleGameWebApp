@@ -115,7 +115,7 @@ class PhysicsSystem {
             const nearbyEntities = this.spatialGrid.getNearby(
                 transformA.x, 
                 transformA.y, 
-                2000 // Max gravity range
+                10000 // Max gravity range for planets (2x increase)
             );
             
             nearbyEntities.forEach(entityB => {
@@ -147,8 +147,12 @@ class PhysicsSystem {
         const dy = transformB.y - transformA.y;
         const distSq = dx * dx + dy * dy;
         
-        // Skip if too close or too far
-        if (distSq < 100 || distSq > 4000000) return null;
+        // Skip if too close
+        if (distSq < 100) return null;
+        
+        // For planets (high mass), use much longer gravity range
+        const maxRange = physicsB.mass > 100 ? 100000000 : 4000000; // 10000 or 2000 pixel range (2x increase)
+        if (distSq > maxRange) return null;
         
         const dist = Math.sqrt(distSq);
         
@@ -168,8 +172,8 @@ class PhysicsSystem {
         const forceY = (dy / dist) * forceMagnitude * dampeningFactor;
         
         // Debug log planet gravity occasionally
-        if (physicsB.mass > 50 && Math.random() < 0.001) {
-            console.log(`[Gravity] Force from mass ${physicsB.mass} at dist ${dist.toFixed(0)}: ${forceMagnitude.toFixed(2)}`);
+        if (physicsB.mass > 100 && Math.random() < 0.01) {
+            console.log(`[Gravity] Planet mass ${physicsB.mass} pulling entity at dist ${dist.toFixed(0)}: force ${forceMagnitude.toFixed(2)}`);
         }
         
         return { x: forceX, y: forceY };

@@ -106,8 +106,8 @@ class GameScene extends Phaser.Scene {
         graphics.clear();
         
         // Faction-specific enemy textures
-        // Swarm enemy
-        graphics.fillStyle(0xff6666, 1);
+        // Swarm enemy - pink to stand out
+        graphics.fillStyle(0xff69b4, 1); // Hot pink
         graphics.fillTriangle(0, 0, 24, 6, 0, 12);
         graphics.generateTexture('enemy-swarm', 24, 12);
         graphics.clear();
@@ -351,6 +351,9 @@ class GameScene extends Phaser.Scene {
         
         const commands = {
             pause: () => {
+                // Don't allow pausing/unpausing if game is over
+                if (gameState.get('game.gameOver')) return;
+                
                 const paused = !gameState.get('game.paused');
                 eventBus.emit('GAME_PAUSE', { paused });
             },
@@ -358,7 +361,10 @@ class GameScene extends Phaser.Scene {
                 this.scene.restart();
             },
             menu: () => {
+                // Stop the game properly before returning to menu
                 eventBus.emit('AUDIO_STOP_MUSIC');
+                this.matter.world.pause();
+                this.scene.stop();
                 this.scene.start('Menu');
             },
             upgrade: () => {
@@ -385,32 +391,32 @@ class GameScene extends Phaser.Scene {
             delay: 100,
             repeat: -1,
             callback: () => {
-                if (!gameState.get('game.paused')) {
-                    const waveInProgress = gameState.get('waves.waveInProgress');
-                    const state = {
-                        player: {
-                            health: gameState.get('player.health'),
-                            maxHealth: gameState.get('player.maxHealth'),
-                            energy: gameState.get('player.energy'),
-                            maxEnergy: gameState.get('player.maxEnergy'),
-                            alive: gameState.get('player.alive')
-                        },
-                        game: {
-                            credits: gameState.get('game.credits'),
-                            score: gameState.get('game.score'),
-                            combo: gameState.get('game.combo'),
-                            comboTimer: gameState.get('game.comboTimer'),
-                            paused: gameState.get('game.paused'),
-                            gameOver: gameState.get('game.gameOver')
-                        },
-                        mission: {
-                            currentWave: gameState.get('waves.current'),
-                            waveInProgress: waveInProgress,
-                            enemiesDefeated: gameState.get('waves.totalEnemies') - gameState.get('waves.enemiesRemaining'),
-                            totalEnemies: gameState.get('waves.totalEnemies')
-                        },
-                        upgrades: abilitySystem.getAllUpgradeInfo()
-                    };
+                // Always send UI updates, even when paused
+                const waveInProgress = gameState.get('waves.waveInProgress');
+                const state = {
+                    player: {
+                        health: gameState.get('player.health'),
+                        maxHealth: gameState.get('player.maxHealth'),
+                        energy: gameState.get('player.energy'),
+                        maxEnergy: gameState.get('player.maxEnergy'),
+                        alive: gameState.get('player.alive')
+                    },
+                    game: {
+                        credits: gameState.get('game.credits'),
+                        score: gameState.get('game.score'),
+                        combo: gameState.get('game.combo'),
+                        comboTimer: gameState.get('game.comboTimer'),
+                        paused: gameState.get('game.paused'),
+                        gameOver: gameState.get('game.gameOver')
+                    },
+                    mission: {
+                        currentWave: gameState.get('waves.current'),
+                        waveInProgress: waveInProgress,
+                        enemiesDefeated: gameState.get('waves.totalEnemies') - gameState.get('waves.enemiesRemaining'),
+                        totalEnemies: gameState.get('waves.totalEnemies')
+                    },
+                    upgrades: abilitySystem.getAllUpgradeInfo()
+                };
                     
                     // Debug log wave state changes
                     if (this.lastWaveInProgress !== waveInProgress) {
@@ -425,10 +431,9 @@ class GameScene extends Phaser.Scene {
                         defense: this.gameInitializer.upgradeSystem.getUpgradeCost('defense'),
                         energy: this.gameInitializer.upgradeSystem.getUpgradeCost('energy')
                     };
-                    state.upgrades = upgrades;
-                    
-                    window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
-                }
+                state.upgrades = upgrades;
+                
+                window.dispatchEvent(new CustomEvent('gameStateUpdate', { detail: state }));
             }
         });
     }

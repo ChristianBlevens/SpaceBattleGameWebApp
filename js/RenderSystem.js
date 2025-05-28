@@ -25,6 +25,9 @@ class RenderSystem {
         // Enemy markers
         this.enemyMarkers = new Map();
         this.markerGraphics = null;
+        
+        // Gravity well graphics
+        this.gravityGraphics = null;
     }
     
     init() {
@@ -38,6 +41,10 @@ class RenderSystem {
         // Create marker graphics layer
         this.markerGraphics = this.scene.add.graphics();
         this.markerGraphics.setDepth(900); // High depth to render over game but under UI
+        
+        // Create gravity well graphics layer
+        this.gravityGraphics = this.scene.add.graphics();
+        this.gravityGraphics.setDepth(10); // Low depth to render behind entities
     }
     
     setupCamera() {
@@ -293,6 +300,9 @@ class RenderSystem {
         
         // Update enemy markers
         this.updateEnemyMarkers();
+        
+        // Update gravity wells
+        this.updateGravityWells();
         
         // Clean up destroyed sprites
         this.cleanupDestroyedSprites();
@@ -1472,6 +1482,43 @@ class RenderSystem {
         graphics.fillStyle(color, alpha);
         graphics.fillCircle(radius, radius, radius);
         graphics.generateTexture(key, radius * 2, radius * 2);
+    }
+    
+    // ===== GRAVITY WELL RENDERING =====
+    
+    updateGravityWells() {
+        if (!this.gravityGraphics) return;
+        
+        // Clear previous gravity wells
+        this.gravityGraphics.clear();
+        
+        // Get all planets
+        const planets = this.entityManager.getEntitiesByType('planet');
+        
+        planets.forEach(planetId => {
+            const transform = this.entityManager.getComponent(planetId, 'transform');
+            const physics = this.entityManager.getComponent(planetId, 'physics');
+            
+            if (!transform || !physics) return;
+            
+            // Calculate gravity well radius based on mass (2x increase)
+            const baseRadius = physics.radius;
+            const gravityRadius = baseRadius + (Math.sqrt(physics.mass) * 40); // 2x the visual range
+            
+            // Draw concentric circles to show gravity field
+            for (let i = 0; i < 8; i++) { // More circles for larger range
+                const radius = baseRadius + ((gravityRadius - baseRadius) * (i + 1) / 8);
+                const alpha = 0.08 * (1 - i / 8); // Fade out with distance
+                
+                this.gravityGraphics.lineStyle(2, 0x4444ff, alpha);
+                this.gravityGraphics.strokeCircle(transform.x, transform.y, radius);
+            }
+            
+            // Add a subtle glow effect around the planet
+            const glowRadius = baseRadius * 1.2;
+            this.gravityGraphics.fillStyle(0x6666ff, 0.1);
+            this.gravityGraphics.fillCircle(transform.x, transform.y, glowRadius);
+        });
     }
 }
 

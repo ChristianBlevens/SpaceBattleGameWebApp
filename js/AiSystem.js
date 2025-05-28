@@ -9,8 +9,8 @@ class AISystem {
         
         // AI configuration
         this.config = {
-            detectionRange: 1200, // Max detection range for all AI
-            shootingRange: 600,   // Max shooting range
+            detectionRange: 2000, // Match player's view at base zoom (screen width / 0.4)
+            shootingRange: 800,   // Increased shooting range
             meleeRange: 200      // Close combat range
         };
         
@@ -34,10 +34,10 @@ class AISystem {
         
         // Initialize faction behaviors with trait composition
         this.factionBehaviors = {
-            swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
-            sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
-            phantom: new PhantomBehavior(this.eventBus, this.entityManager, this.scene, this.traits),
-            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene, this.traits)
+            swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
+            sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
+            phantom: new PhantomBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
+            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config)
         };
         
         // Listen for player creation
@@ -480,11 +480,12 @@ class FormationTrait {
 
 // Base behavior class
 class BaseBehavior {
-    constructor(eventBus, entityManager, scene, traits) {
+    constructor(eventBus, entityManager, scene, traits, config) {
         this.eventBus = eventBus;
         this.entityManager = entityManager;
         this.scene = scene;
         this.traits = traits; // Shared trait behaviors
+        this.config = config; // AI configuration
     }
     
     applyForce(entityId, forceX, forceY) {
@@ -494,6 +495,10 @@ class BaseBehavior {
 
 // Swarm behavior - chaotic bee-like attacks
 class SwarmBehavior extends BaseBehavior {
+    constructor(eventBus, entityManager, scene, traits, config) {
+        super(eventBus, entityManager, scene, traits, config);
+    }
+    
     updateGroup(entities, deltaTime, playerId) {
         // Calculate swarm center
         let centerX = 0, centerY = 0;
@@ -667,8 +672,8 @@ class SwarmBehavior extends BaseBehavior {
 
 // Sentinel behavior - defensive and tactical with orbiting
 class SentinelBehavior extends BaseBehavior {
-    constructor(eventBus, entityManager, scene, traits) {
-        super(eventBus, entityManager, scene, traits);
+    constructor(eventBus, entityManager, scene, traits, config) {
+        super(eventBus, entityManager, scene, traits, config);
         this.formations = new Map();
     }
     
@@ -744,10 +749,27 @@ class SentinelBehavior extends BaseBehavior {
             ai.memory.orbitAngle = Math.random() * Math.PI * 2;
             ai.memory.orbitSpeed = 0.001 + Math.random() * 0.001;
             ai.memory.preferredDistance = 350 + Math.random() * 100;
+            ai.memory.lastShotTime = 0;
+            ai.memory.shotCooldown = 1500; // 1.5 seconds between shots
         }
+        
+        // Update shot cooldown
+        ai.memory.lastShotTime -= deltaTime * 1000;
         
         // Find target
         const target = this.traits.targeting.getNearestTarget(entityId, transform, 'sentinel');
+        
+        // Debug logging for targeting
+        if (Math.random() < 0.01) { // 1% chance to log
+            const allTargets = this.traits.targeting.findTargets(entityId, transform, 'sentinel');
+            console.log(`[Sentinel ${entityId}] Targeting:`, {
+                hasTarget: !!target,
+                targetId: target?.id || 'none',
+                targetDistance: target?.distance || 'N/A',
+                totalTargetsFound: allTargets.length,
+                detectionRange: this.config.detectionRange
+            });
+        }
         
         // Calculate forces
         let forceX = 0, forceY = 0;
@@ -776,20 +798,29 @@ class SentinelBehavior extends BaseBehavior {
             forceY += orbitForce.y + distanceForce.y;
             
             // Tactical shooting with good prediction
-            if (this.traits.shooting.canShoot(entityId, target.distance)) {
-                // Coordinate with nearby sentinels
-                let shouldFire = true;
-                allies.forEach(allyId => {
-                    if (allyId === entityId) return;
-                    const allyWeapon = this.entityManager.getComponent(allyId, 'weapon');
-                    if (allyWeapon && allyWeapon.lastFireTime > -100 && allyWeapon.lastFireTime < 100) {
-                        shouldFire = false; // Stagger shots
-                    }
+            const weapon = this.entityManager.getComponent(entityId, 'weapon');
+            
+            // Debug logging
+            if (Math.random() < 0.01) { // 1% chance to log
+                console.log(`[Sentinel ${entityId}] Combat check:`, {
+                    hasWeapon: !!weapon,
+                    weaponCooldown: weapon?.lastFireTime || 'N/A',
+                    aiCooldown: ai.memory.lastShotTime,
+                    targetDistance: target.distance,
+                    shootingRange: this.config.shootingRange,
+                    canShoot: weapon && weapon.lastFireTime <= 0 && ai.memory.lastShotTime <= 0 && target.distance <= this.config.shootingRange
                 });
+            }
+            
+            if (weapon && target.distance <= this.config.shootingRange && 
+                weapon.lastFireTime <= 0 && ai.memory.lastShotTime <= 0) {
                 
-                if (shouldFire) {
-                    this.traits.shooting.aimAndShoot(entityId, target, 0.9); // 90% accuracy
-                }
+                // Fire with prediction
+                this.traits.shooting.aimAndShoot(entityId, target, 0.9); // 90% accuracy
+                ai.memory.lastShotTime = ai.memory.shotCooldown;
+                
+                // Log successful shot
+                console.log(`[Sentinel ${entityId}] FIRING at target ${target.id} at distance ${target.distance}`);
             }
         } else {
             // Patrol or maintain formation
@@ -856,6 +887,10 @@ class SentinelBehavior extends BaseBehavior {
 
 // Phantom behavior - hit and run with dash mechanics
 class PhantomBehavior extends BaseBehavior {
+    constructor(eventBus, entityManager, scene, traits, config) {
+        super(eventBus, entityManager, scene, traits, config);
+    }
+    
     updateGroup(entities, deltaTime, playerId) {
         entities.forEach(entityId => {
             this.updateEntity(entityId, entities, deltaTime);
@@ -1053,6 +1088,11 @@ class PhantomBehavior extends BaseBehavior {
 
 // Titan behavior - charging and slam attacks
 class TitanBehavior extends BaseBehavior {
+    constructor(eventBus, entityManager, scene, traits, config) {
+        super(eventBus, entityManager, scene, traits, config);
+        this.titanDetectionRange = 2500; // Massive detection range
+    }
+    
     updateGroup(entities, deltaTime, playerId) {
         entities.forEach(entityId => {
             this.updateEntity(entityId, deltaTime);
@@ -1063,181 +1103,252 @@ class TitanBehavior extends BaseBehavior {
         const ai = this.entityManager.getComponent(entityId, 'ai');
         const transform = this.entityManager.getComponent(entityId, 'transform');
         const physics = this.entityManager.getComponent(entityId, 'physics');
+        const sprite = this.scene.sprites.get(entityId);
         
-        if (!ai || !transform || !physics) return;
+        if (!ai || !transform || !physics || !sprite) {
+            console.log(`[Titan ${entityId}] Missing components:`, { ai: !!ai, transform: !!transform, physics: !!physics, sprite: !!sprite });
+            return;
+        }
         
         // Initialize memory
-        if (!ai.memory.chargeTimer) {
-            ai.memory.chargeTimer = 0;
-            ai.memory.rageLevel = 0;
+        if (!ai.memory.initialized) {
+            ai.memory.initialized = true;
+            ai.memory.state = 'hunting'; // hunting, charging, slamming
             ai.memory.chargeSpeed = 0;
-            ai.memory.chargeDirection = null;
+            ai.memory.chargeTarget = null;
             ai.memory.chargeCooldown = 0;
             ai.memory.slamCooldown = 0;
-            ai.memory.isCharging = false;
+            ai.memory.wanderAngle = Math.random() * Math.PI * 2;
+            ai.memory.roarTimer = 0;
+            console.log(`[Titan ${entityId}] Initialized`);
         }
         
         // Update timers
-        ai.memory.chargeCooldown -= deltaTime * 1000;
-        ai.memory.slamCooldown -= deltaTime * 1000;
+        ai.memory.chargeCooldown = Math.max(0, ai.memory.chargeCooldown - deltaTime);
+        ai.memory.slamCooldown = Math.max(0, ai.memory.slamCooldown - deltaTime);
+        ai.memory.roarTimer = Math.max(0, ai.memory.roarTimer - deltaTime);
         
-        // Find target with detection range limit
-        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'titan');
+        // Find nearest target with massive detection range
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'titan', this.titanDetectionRange);
         
-        // Update rage
-        if (target && target.distance < 300) {
-            ai.memory.rageLevel = Math.min(1, ai.memory.rageLevel + 0.1);
-        } else {
-            ai.memory.rageLevel = Math.max(0, ai.memory.rageLevel - 0.05);
-        }
-        
-        // Calculate forces
         let forceX = 0, forceY = 0;
         
-        if (ai.memory.isCharging && ai.memory.chargeDirection) {
-            // Continue charge - no distance limit during charge
-            ai.memory.chargeSpeed = Math.min(ai.memory.chargeSpeed + 0.3, 15);
-            
-            // Very limited turning during charge
-            if (target) {
-                const targetDir = this.traits.movement.moveToward(
-                    transform,
-                    target.transform.x,
-                    target.transform.y,
-                    1.0
-                );
-                
-                // 5% course correction
-                ai.memory.chargeDirection.x = ai.memory.chargeDirection.x * 0.95 + targetDir.x * 0.05;
-                ai.memory.chargeDirection.y = ai.memory.chargeDirection.y * 0.95 + targetDir.y * 0.05;
-                
-                // Renormalize
-                const len = Math.sqrt(ai.memory.chargeDirection.x ** 2 + ai.memory.chargeDirection.y ** 2);
-                ai.memory.chargeDirection.x /= len;
-                ai.memory.chargeDirection.y /= len;
-            }
-            
-            // Apply charge force
-            forceX = ai.memory.chargeDirection.x * ai.memory.chargeSpeed * 0.05;
-            forceY = ai.memory.chargeDirection.y * ai.memory.chargeSpeed * 0.05;
-            
-            // Check for slam opportunity
-            if (target && target.distance < 200) {
-                // End charge and slam
-                ai.memory.isCharging = false;
-                ai.memory.chargeSpeed = 0;
-                ai.memory.chargeCooldown = 3000; // 3 second cooldown
-                
-                // Execute slam
-                this.eventBus.emit('TITAN_SHOCKWAVE', {
-                    entityId: entityId,
-                    x: transform.x,
-                    y: transform.y,
-                    radius: 300,
-                    damage: 50
-                });
-                
-                this.eventBus.emit('CAMERA_SHAKE', {
-                    duration: 800,
-                    intensity: 0.04
-                });
-            }
-        } else if (target) {
-            // Not charging - normal behavior
-            if (target.distance > 400 && ai.memory.chargeCooldown <= 0) {
-                // Start charge
-                ai.memory.isCharging = true;
-                ai.memory.chargeSpeed = 0;
-                ai.memory.chargeDirection = this.traits.movement.moveToward(
-                    transform,
-                    target.transform.x,
-                    target.transform.y,
-                    1.0
-                );
-            } else if (target.distance < 250 && ai.memory.slamCooldown <= 0) {
-                // Close range slam
-                ai.memory.slamCooldown = 3000;
-                
-                this.eventBus.emit('TITAN_SHOCKWAVE', {
-                    entityId: entityId,
-                    x: transform.x,
-                    y: transform.y,
-                    radius: 300,
-                    damage: 50
-                });
-                
-                this.eventBus.emit('CAMERA_SHAKE', {
-                    duration: 800,
-                    intensity: 0.04
-                });
-            } else {
-                // Normal advance
-                const moveForce = this.traits.movement.moveToward(
-                    transform,
-                    target.transform.x,
-                    target.transform.y,
-                    0.015 * (1 + ai.memory.rageLevel)
-                );
-                forceX += moveForce.x;
-                forceY += moveForce.y;
-                
-                // Powerful shots
-                if (this.traits.shooting.canShoot(entityId, target.distance)) {
-                    const weapon = this.entityManager.getComponent(entityId, 'weapon');
-                    if (weapon) {
-                        weapon.chargeTime = weapon.maxChargeTime; // Charged shots
+        // State machine
+        switch (ai.memory.state) {
+            case 'hunting':
+                if (target && ai.memory.chargeCooldown <= 0) {
+                    // BEAST MODE: Initiate charge!
+                    ai.memory.state = 'charging';
+                    ai.memory.chargeSpeed = 2; // Start with some initial speed
+                    ai.memory.chargeTarget = {
+                        x: target.transform.x,
+                        y: target.transform.y,
+                        id: target.id
+                    };
+                    
+                    // Announce charge with shockwave
+                    this.eventBus.emit('TITAN_SHOCKWAVE', {
+                        x: transform.x,
+                        y: transform.y
+                    });
+                    
+                    console.log(`[Titan ${entityId}] INITIATING CHARGE! Target: ${target.faction} at ${Math.round(target.distance)} distance`);
+                } else if (target && ai.memory.chargeCooldown > 0) {
+                    // On cooldown - aggressively pursue
+                    const pursuit = this.traits.movement.moveToward(
+                        transform,
+                        target.transform.x,
+                        target.transform.y,
+                        0.03
+                    );
+                    forceX = pursuit.x;
+                    forceY = pursuit.y;
+                    
+                    // Try to slam if close enough
+                    if (target.distance < 200 && ai.memory.slamCooldown <= 0) {
+                        this.executeSlam(entityId, transform);
                     }
-                    this.traits.shooting.aimAndShoot(entityId, target, 0.95); // 95% accuracy
+                    
+                    // Shoot while pursuing
+                    if (this.traits.shooting.canShoot(entityId, target.distance)) {
+                        this.traits.shooting.aimAndShoot(entityId, target, 0.9);
+                    }
+                } else {
+                    // No target - wander aggressively
+                    ai.memory.wanderAngle += (Math.random() - 0.5) * 0.2;
+                    forceX = Math.cos(ai.memory.wanderAngle) * 0.02;
+                    forceY = Math.sin(ai.memory.wanderAngle) * 0.02;
+                    
+                    // Occasional roar
+                    if (ai.memory.roarTimer <= 0) {
+                        ai.memory.roarTimer = 5 + Math.random() * 5;
+                        console.log(`[Titan ${entityId}] *ROAR* (wandering)`);
+                    }
                 }
-            }
-        } else {
-            // No target - aggressive wandering
-            if (!ai.memory.seekAngle) {
-                ai.memory.seekAngle = Math.random() * Math.PI * 2;
-            }
-            ai.memory.seekAngle += (Math.random() - 0.5) * 0.1;
-            
-            forceX = Math.cos(ai.memory.seekAngle) * 0.01;
-            forceY = Math.sin(ai.memory.seekAngle) * 0.01;
+                break;
+                
+            case 'charging':
+                // Accelerate charge continuously
+                ai.memory.chargeSpeed = Math.min(ai.memory.chargeSpeed + deltaTime * 30, 25); // Max speed 25
+                
+                // Set initial charge direction if not set
+                if (!ai.memory.chargeDirection) {
+                    if (target) {
+                        // Predict where target will be based on their velocity
+                        const targetPhysics = this.entityManager.getComponent(target.id, 'physics');
+                        let predictX = target.transform.x;
+                        let predictY = target.transform.y;
+                        
+                        if (targetPhysics && targetPhysics.velocity) {
+                            // Calculate time to reach target at average charge speed
+                            const avgChargeSpeed = 15; // Average between start and max
+                            const timeToTarget = target.distance / avgChargeSpeed;
+                            
+                            // Predict target position
+                            predictX += targetPhysics.velocity.x * timeToTarget * 0.7; // 70% prediction for some error
+                            predictY += targetPhysics.velocity.y * timeToTarget * 0.7;
+                        }
+                        
+                        // Lock in the charge direction toward predicted position
+                        const dx = predictX - transform.x;
+                        const dy = predictY - transform.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        
+                        ai.memory.chargeDirection = { 
+                            x: dx / dist, 
+                            y: dy / dist 
+                        };
+                        ai.memory.chargeTargetId = target.id;
+                        ai.memory.lastTargetDistance = target.distance;
+                        
+                        console.log(`[Titan ${entityId}] Charge direction locked with prediction!`);
+                    } else {
+                        // No target? Charge forward
+                        ai.memory.chargeDirection = {
+                            x: Math.cos(sprite.rotation),
+                            y: Math.sin(sprite.rotation)
+                        };
+                    }
+                }
+                
+                // Apply charge force in locked direction (NO TURNING)
+                if (ai.memory.chargeDirection) {
+                    forceX = ai.memory.chargeDirection.x * ai.memory.chargeSpeed * 0.1;
+                    forceY = ai.memory.chargeDirection.y * ai.memory.chargeSpeed * 0.1;
+                }
+                
+                // Track distance to original target
+                if (target && target.id === ai.memory.chargeTargetId) {
+                    const currentDistance = target.distance;
+                    
+                    // Check if we're moving away from target
+                    if (ai.memory.lastTargetDistance && currentDistance > ai.memory.lastTargetDistance) {
+                        console.log(`[Titan ${entityId}] Passed target! Was ${ai.memory.lastTargetDistance.toFixed(0)}, now ${currentDistance.toFixed(0)}`);
+                        ai.memory.state = 'hunting';
+                        ai.memory.chargeSpeed = 0;
+                        ai.memory.chargeDirection = null;
+                        ai.memory.chargeCooldown = 3;
+                    }
+                    
+                    ai.memory.lastTargetDistance = currentDistance;
+                }
+                
+                // Check for slam opportunity during charge
+                const nearbyTargets = this.traits.targeting.findTargets(entityId, transform, 'titan', 200);
+                if (nearbyTargets.length > 0 && ai.memory.slamCooldown <= 0) {
+                    // SLAM!
+                    this.executeSlam(entityId, transform);
+                    ai.memory.state = 'hunting';
+                    ai.memory.chargeSpeed = 0;
+                    ai.memory.chargeDirection = null; // Clear direction
+                    ai.memory.chargeCooldown = 3; // 3 second charge cooldown
+                }
+                
+                // End charge if no targets in extended range
+                if (!target) {
+                    console.log(`[Titan ${entityId}] Lost all targets, ending charge`);
+                    ai.memory.state = 'hunting';
+                    ai.memory.chargeSpeed = 0;
+                    ai.memory.chargeDirection = null; // Clear direction
+                    ai.memory.chargeCooldown = 3;
+                }
+                break;
         }
         
-        // Gravity avoidance - titans resist but fear vortexes
+        // Gravity avoidance (titans resist but still avoid vortexes)
         const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
-        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 0.7);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 0.5);
         
         // Check for vortex danger
         const nearVortex = gravitySources.some(source => 
             source.type === 'vortex' && source.distance < source.eventHorizon * 2
         );
         
-        if (nearVortex) {
-            // Emergency escape
-            forceX += gravityAvoidance.x * 2;
-            forceY += gravityAvoidance.y * 2;
-            // Cancel charge
-            if (ai.memory.isCharging) {
-                ai.memory.isCharging = false;
-                ai.memory.chargeSpeed = 0;
-                ai.memory.chargeCooldown = 1000;
-            }
-        } else {
-            // Normal gravity resistance
-            forceX += gravityAvoidance.x;
-            forceY += gravityAvoidance.y;
+        if (nearVortex && ai.memory.state === 'charging') {
+            // Emergency abort charge
+            console.log(`[Titan ${entityId}] VORTEX DANGER! Aborting charge!`);
+            ai.memory.state = 'hunting';
+            ai.memory.chargeSpeed = 0;
+            ai.memory.chargeDirection = null; // Clear direction
+            ai.memory.chargeCooldown = 1;
         }
+        
+        // Always apply some gravity avoidance
+        forceX += gravityAvoidance.x;
+        forceY += gravityAvoidance.y;
         
         // Apply forces
         this.applyForce(entityId, forceX, forceY);
         
-        // Update physics
-        if (ai.memory.isCharging) {
+        // Update physics based on state
+        if (ai.memory.state === 'charging') {
             physics.maxSpeed = ai.memory.chargeSpeed;
-            physics.damping = 0.999;
+            physics.damping = 0.999; // Less damping during charge
         } else {
-            physics.maxSpeed = 4 + ai.memory.rageLevel * 2;
-            physics.damping = 0.995;
+            physics.maxSpeed = 6; // Faster base speed
+            physics.damping = 0.99;
         }
-        physics.mass = 30; // Heavy
+        
+        // Debug occasional status
+        if (Math.random() < 0.001) {
+            console.log(`[Titan ${entityId}] Status:`, {
+                state: ai.memory.state,
+                chargeSpeed: ai.memory.chargeSpeed.toFixed(1),
+                chargeCooldown: ai.memory.chargeCooldown.toFixed(1),
+                hasTarget: !!target,
+                targetDistance: target?.distance.toFixed(0) || 'N/A'
+            });
+        }
+    }
+    
+    executeSlam(entityId, transform) {
+        console.log(`[Titan ${entityId}] EXECUTING SLAM!`);
+        
+        // Set slam cooldown
+        const ai = this.entityManager.getComponent(entityId, 'ai');
+        ai.memory.slamCooldown = 2; // 2 second cooldown
+        
+        // Emit slam event
+        this.eventBus.emit('TITAN_SLAM', {
+            attackerId: entityId,
+            x: transform.x,
+            y: transform.y,
+            radius: 300,
+            damage: 50,
+            knockback: 800
+        });
+        
+        // Camera shake
+        this.eventBus.emit('CAMERA_SHAKE', {
+            duration: 800,
+            intensity: 0.04
+        });
+        
+        // Create shockwave visual
+        this.eventBus.emit('TITAN_SHOCKWAVE', {
+            x: transform.x,
+            y: transform.y
+        });
     }
 }
 

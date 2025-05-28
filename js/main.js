@@ -170,11 +170,11 @@ const GameConfig = {
     
     // Physics constants
     physics: {
-        gravity: 10.0,  // Much stronger gravity to be noticeable
+        gravity: 50.0,  // Much stronger gravity to be noticeable
         spiralForce: 0.0003,
         damping: 0.999,
         maxVelocity: 15,
-        gravitationFalloff: 1.5  // Lower falloff for longer range gravity
+        gravitationFalloff: 1.8  // Slightly higher falloff for more realistic gravity
     },
     
     // Player settings
@@ -191,7 +191,7 @@ const GameConfig = {
     // Enemy factions
     factions: {
         swarm: {
-            color: 0xff6666,
+            color: 0xff69b4, // Hot pink to stand out
             behavior: 'aggressive',
             speed: 8.0,      // High speed
             health: 20,      // Low health

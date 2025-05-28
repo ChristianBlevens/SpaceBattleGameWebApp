@@ -17,6 +17,12 @@ class MenuScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
+        // Reset menu state
+        this.menuItems = [];
+        this.selectedIndex = 0;
+        this.menuReady = false;
+        this.activating = false;
+        
         // Setup audio handler
         this.setupAudioHandler();
         
@@ -237,8 +243,8 @@ class MenuScene extends Phaser.Scene {
     createMenuItems() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
-        const startY = height * 0.5;
-        const spacing = 60;
+        const startY = height * 0.45; // Move up to prevent overlap
+        const spacing = 80; // Increase spacing between items
         
         const menuOptions = [
             { text: 'NEW GAME', action: () => this.startGame() },
@@ -246,6 +252,10 @@ class MenuScene extends Phaser.Scene {
             { text: 'OPTIONS', action: () => this.showOptions() },
             { text: 'CREDITS', action: () => this.showCredits() }
         ];
+        
+        // Reset menu state
+        this.selectedIndex = -1;
+        this.menuItems = [];
         
         menuOptions.forEach((option, index) => {
             const menuItem = this.add.text(width / 2, startY + (index * spacing), option.text, {
@@ -260,7 +270,7 @@ class MenuScene extends Phaser.Scene {
             menuItem.setInteractive({ 
                 useHandCursor: !option.disabled,
                 pixelPerfect: false,
-                hitArea: new Phaser.Geom.Rectangle(-100, -20, menuItem.width + 200, menuItem.height + 40),
+                hitArea: new Phaser.Geom.Rectangle(-150, -25, menuItem.width + 300, menuItem.height + 50),
                 hitAreaCallback: Phaser.Geom.Rectangle.Contains
             });
             menuItem.setAlpha(0);
@@ -289,6 +299,14 @@ class MenuScene extends Phaser.Scene {
                     this.audioHandler.playSound('hit');
                 });
                 
+                menuItem.on('pointerout', () => {
+                    if (!this.menuReady) return;
+                    // Deselect when mouse leaves
+                    if (this.selectedIndex === index) {
+                        this.deselectCurrentItem();
+                    }
+                });
+                
                 menuItem.on('pointerdown', () => {
                     if (!this.menuReady) return;
                     
@@ -308,8 +326,8 @@ class MenuScene extends Phaser.Scene {
             this.menuItems.push(menuItem);
         });
         
-        // Select first available item
-        this.selectMenuItem(0);
+        // Don't select any item initially - wait for user interaction
+        this.selectedIndex = -1;
     }
     
     setupKeyboardNavigation() {
@@ -374,6 +392,31 @@ class MenuScene extends Phaser.Scene {
         this.audioHandler.playSound('hit');
     }
     
+    deselectCurrentItem() {
+        if (this.menuItems[this.selectedIndex]) {
+            const prevItem = this.menuItems[this.selectedIndex];
+            if (prevItem && prevItem.active) {
+                this.tweens.add({
+                    targets: prevItem,
+                    scale: prevItem.baseScale || 1,
+                    duration: 200,
+                    ease: 'Power2'
+                });
+                if (prevItem.setColor) {
+                    prevItem.setColor('#ffffff');
+                }
+                
+                // Remove glow effect
+                if (prevItem.glowEffect) {
+                    this.tweens.killTweensOf(prevItem.glowEffect);
+                    prevItem.glowEffect.destroy();
+                    prevItem.glowEffect = null;
+                }
+            }
+        }
+        this.selectedIndex = -1;
+    }
+    
     selectMenuItem(index) {
         // Deselect previous item
         if (this.menuItems[this.selectedIndex]) {
@@ -388,12 +431,23 @@ class MenuScene extends Phaser.Scene {
                 if (prevItem.setColor) {
                     prevItem.setColor('#ffffff');
                 }
+                
+                // Remove old glow effect
+                if (prevItem.glowEffect) {
+                    this.tweens.killTweensOf(prevItem.glowEffect);
+                    prevItem.glowEffect.destroy();
+                    prevItem.glowEffect = null;
+                }
             }
         }
         
         // Select new item
         this.selectedIndex = index;
         const selectedItem = this.menuItems[this.selectedIndex];
+        
+        if (!selectedItem || !selectedItem.active) {
+            return;
+        }
         
         if (!selectedItem.disabled) {
             this.tweens.add({
@@ -402,7 +456,9 @@ class MenuScene extends Phaser.Scene {
                 duration: 200,
                 ease: 'Back.easeOut'
             });
-            selectedItem.setColor('#00ffff');
+            if (selectedItem.setColor) {
+                selectedItem.setColor('#00ffff');
+            }
             
             // Add glow effect
             if (!selectedItem.glowEffect) {
