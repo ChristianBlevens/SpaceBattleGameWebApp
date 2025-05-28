@@ -86,9 +86,20 @@ class RenderSystem {
         });
         
         this.eventBus.on('CAMERA_ZOOM', (data) => {
+            // Calculate minimum zoom to prevent seeing outside map
+            const viewportWidth = this.scene.cameras.main.width;
+            const viewportHeight = this.scene.cameras.main.height;
+            const worldWidth = GameConfig.world.width;
+            const worldHeight = GameConfig.world.height;
+            
+            // Minimum zoom is the larger of the two ratios to ensure the entire viewport is filled
+            const minZoomX = viewportWidth / worldWidth;
+            const minZoomY = viewportHeight / worldHeight;
+            const calculatedMinZoom = Math.max(minZoomX, minZoomY) * 1.1; // Add 10% buffer
+            
             // Zoom based on scroll direction (flipped)
             const zoomSpeed = 0.2; // Increased speed
-            const minZoom = 0.1; // No limit on zoom out
+            const minZoom = Math.max(0.15, calculatedMinZoom); // Use calculated min or 0.15, whichever is larger
             const maxZoom = 0.4; // Limit zoom in to current default
             
             if (data.delta > 0) {
@@ -312,6 +323,7 @@ class RenderSystem {
         this.scene.sprites.forEach((sprite, entityId) => {
             if (!sprite || !sprite.active) return;
             
+            const entity = this.entityManager.getEntity(entityId);
             const transform = this.entityManager.getComponent(entityId, 'transform');
             const physics = this.entityManager.getComponent(entityId, 'physics');
             
@@ -319,7 +331,11 @@ class RenderSystem {
                 // Update transform from physics body
                 transform.x = sprite.x;
                 transform.y = sprite.y;
-                transform.rotation = sprite.rotation;
+                
+                // Only sync rotation for non-planet entities
+                if (entity && entity.type !== 'planet') {
+                    transform.rotation = sprite.rotation;
+                }
                 
                 // Sync physics velocity
                 if (physics && sprite.body.velocity) {
@@ -351,6 +367,18 @@ class RenderSystem {
                 sprite.rotation += Math.sign(angleDiff) * turnAmount;
             }
         });
+        
+        // Also handle player rotation
+        if (this.playerId) {
+            const playerSprite = this.scene.sprites.get(this.playerId);
+            if (playerSprite && playerSprite.body) {
+                const vel = playerSprite.body.velocity;
+                if (Math.abs(vel.x) > 0.1 || Math.abs(vel.y) > 0.1) {
+                    const targetAngle = Math.atan2(vel.y, vel.x);
+                    playerSprite.rotation = targetAngle;
+                }
+            }
+        }
     }
     
     updateTrails() {

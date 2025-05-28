@@ -43,6 +43,7 @@ class EntityFactory {
         sprite.setData('entityType', 'player');
         
         // Store references
+        sprite.setDepth(20); // Player above most entities
         this.scene.sprites.set(playerId, sprite);
         
         // Request trail creation
@@ -120,6 +121,7 @@ class EntityFactory {
         console.log('[EntityFactory] Enemy sprite created');
         
         // Store references
+        sprite.setDepth(15); // Enemies above vortex
         this.scene.sprites.set(enemyId, sprite);
         this.scene.enemyGroup.add(sprite);
         
@@ -155,7 +157,10 @@ class EntityFactory {
         sprite.setBounce(0.9);
         sprite.setData('entityId', planetId);
         sprite.setData('entityType', 'planet');
+        sprite.setRotation(0); // Ensure zero rotation
+        sprite.setAngularVelocity(0); // No spinning
         
+        sprite.setDepth(10); // Planets above vortex but below enemies
         this.scene.sprites.set(planetId, sprite);
         
         return planetId;
@@ -200,19 +205,20 @@ class EntityFactory {
     createPowerup(x, y, type) {
         const powerupId = this.entityManager.createEntity('powerup', {
             transform: Components.transform(x, y),
-            physics: Components.physics(0, 0, 0.1, 20),
+            physics: Components.physics(0, 0, 0.1, 35), // Increased pickup radius
             sprite: Components.sprite(`powerup-${type}`),
             powerup: Components.powerup(type, type === 'credits' ? 100 : 25),
             lifetime: Components.lifetime(10000)
         });
         
         const sprite = this.scene.matter.add.sprite(x, y, `powerup-${type}`);
-        sprite.setCircle(20);
+        sprite.setCircle(35); // Much larger pickup radius for easier collection
         sprite.setSensor(true);
         sprite.setFriction(0);
         sprite.setData('entityId', powerupId);
         sprite.setData('entityType', 'powerup');
         
+        sprite.setDepth(25); // Powerups on top
         this.scene.sprites.set(powerupId, sprite);
         this.scene.powerupGroup.add(sprite);
         
@@ -286,6 +292,7 @@ class EntityFactory {
             });
         }
         
+        sprite.setDepth(18); // Projectiles above enemies
         this.scene.sprites.set(projectileId, sprite);
         this.scene.projectileGroup.add(sprite);
         
@@ -316,6 +323,7 @@ class EntityFactory {
         sprite.setStatic(false); // Can move
         sprite.setData('entityId', catastropheId);
         sprite.setData('entityType', 'catastrophe');
+        sprite.setDepth(5); // Slightly above background
         
         this.scene.sprites.set(catastropheId, sprite);
         

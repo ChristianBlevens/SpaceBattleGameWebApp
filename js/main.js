@@ -42,6 +42,8 @@ document.addEventListener('alpine:init', () => {
             speed: 40,
             defense: 60
         },
+        dashCooldown: 0,
+        maxDashCooldown: 2000, // 2 seconds
         
         // Methods
         quickUpgrade(type) {
@@ -125,6 +127,11 @@ document.addEventListener('alpine:init', () => {
                 if ('chargePercent' in state) {
                     this.chargePercent = state.chargePercent;
                 }
+                
+                // Update dash cooldown
+                if (state.player && 'dashCooldown' in state.player) {
+                    this.dashCooldown = state.player.dashCooldown || 0;
+                }
             });
             
             // Listen for UI events
@@ -194,7 +201,7 @@ const GameConfig = {
             color: 0xff69b4, // Hot pink to stand out
             behavior: 'aggressive',
             speed: 8.0,      // High speed
-            health: 20,      // Low health
+            health: 10,      // Low health
             damage: 10,      // Medium damage
             size: 0.7,
             spawnCount: 15
