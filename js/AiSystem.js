@@ -1,5 +1,5 @@
-// AISystem.js - Modular AI behavior system with shared traits
-// REFACTORED: Complete modular rewrite with trait composition
+// AISystem.js - Modular AI behavior system with trait composition
+// Implements faction-specific behaviors using reusable behavior traits
 
 class AISystem {
     constructor(scene, eventBus) {
@@ -7,11 +7,11 @@ class AISystem {
         this.eventBus = eventBus;
         this.playerId = null;
         
-        // AI configuration
+        // AI behavior parameters
         this.config = {
-            detectionRange: 2000, // Match player's view at base zoom (screen width / 0.4)
-            shootingRange: 800,   // Increased shooting range
-            meleeRange: 200      // Close combat range
+            detectionRange: 2000, // Enemy awareness radius
+            shootingRange: 800,   // Attack engagement distance
+            meleeRange: 200      // Close combat threshold
         };
         
         // Shared behavior traits
@@ -22,7 +22,7 @@ class AISystem {
     init(entityManager) {
         this.entityManager = entityManager;
         
-        // Initialize shared trait behaviors
+        // Initialize reusable behavior traits
         this.traits = {
             targeting: new TargetingTrait(this.entityManager, this.config),
             shooting: new ShootingTrait(this.eventBus, this.entityManager, this.config),
@@ -32,7 +32,7 @@ class AISystem {
             formation: new FormationTrait(this.entityManager)
         };
         
-        // Initialize faction behaviors with trait composition
+        // Configure faction-specific behavior compositions
         this.factionBehaviors = {
             swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
             sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
@@ -52,7 +52,7 @@ class AISystem {
     update(deltaTime, entityManager) {
         const aiEntities = entityManager.query('ai', 'transform', 'physics');
         
-        // Group entities by faction
+        // Organize entities by faction for group behavior
         const factionGroups = {};
         
         aiEntities.forEach(entityId => {
@@ -77,9 +77,9 @@ class AISystem {
     }
 }
 
-// Shared AI Traits - Modular behaviors that can be composed
+// Reusable AI Behavior Traits
 
-// Targeting trait - handles enemy and player detection with range limits
+// Targeting - Enemy detection and tracking
 class TargetingTrait {
     constructor(entityManager, config) {
         this.entityManager = entityManager;
@@ -92,7 +92,7 @@ class TargetingTrait {
         return Math.sqrt(dx * dx + dy * dy);
     }
     
-    findTargets(entityId, transform, faction, maxRange = null) {
+    findTargets(entityId, transform, faction, maxRange = null, isNecromancerMinion = false) {
         const range = maxRange || this.config.detectionRange;
         const targets = [];
         
@@ -138,6 +138,26 @@ class TargetingTrait {
                 });
             }
         });
+        
+        // Check bosses - but not if we're a necromancer minion
+        if (!isNecromancerMinion) {
+            const bosses = this.entityManager.getEntitiesByType('boss');
+            bosses.forEach(bossId => {
+                const bossTransform = this.entityManager.getComponent(bossId, 'transform');
+                if (!bossTransform) return;
+                
+                const dist = this.getDistance(transform, bossTransform);
+                if (dist <= range) {
+                    targets.push({
+                        id: bossId,
+                        transform: bossTransform,
+                        distance: dist,
+                        type: 'boss',
+                        priority: 0.5 // Lower priority than other enemies
+                    });
+                }
+            });
+        }
         
         // Sort by priority then distance
         targets.sort((a, b) => {

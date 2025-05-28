@@ -62,20 +62,41 @@ class InputSystem {
         
         // P key for killing all enemies (testing)
         this.keys.pauseKey.on('down', () => {
-            // Kill all enemies for testing
-            const entities = this.entityManager.getEntitiesWithComponent('ai');
-            entities.forEach(entityId => {
-                const ai = this.entityManager.getComponent(entityId, 'ai');
-                if (ai && ai.type !== 'player') {
-                    // Emit death event for each enemy
-                    this.eventBus.emit('ENTITY_DEATH', { 
-                        entityId: entityId,
-                        killedBy: this.playerId,
-                        position: this.entityManager.getComponent(entityId, 'physics')
-                    });
+            // Debug key activated - eliminate all hostiles
+            
+            // Get all enemy entities
+            const enemies = this.entityManager.getEntitiesByType('enemy');
+            const bosses = this.entityManager.getEntitiesByType('boss');
+            const allHostiles = [...enemies, ...bosses];
+            
+            // Process entity elimination
+            
+            // Kill each hostile entity properly through the combat system
+            allHostiles.forEach(entityId => {
+                const health = this.entityManager.getComponent(entityId, 'health');
+                const transform = this.entityManager.getComponent(entityId, 'transform');
+                
+                if (health) {
+                    // Set health to 0 to trigger proper death
+                    health.current = 0;
+                    
+                    // Emit proper enemy death event
+                    if (bosses.includes(entityId)) {
+                        // Boss death
+                        this.eventBus.emit('ENTITY_DESTROYED', {
+                            id: entityId
+                        });
+                    } else {
+                        // Regular enemy death - this will handle wave completion
+                        this.eventBus.emit('COMBAT_ENEMY_DEATH', {
+                            entityId: entityId,
+                            transform: transform
+                        });
+                    }
                 }
             });
-            console.log('[InputSystem] Killed all enemies via P key');
+            
+            // All hostile entities eliminated
         });
         
         // Debug toggle
@@ -207,10 +228,10 @@ class InputSystem {
         if (!this.playerId) {
             this.playerId = this.gameState.getPlayerId();
             if (!this.playerId) {
-                console.log('[InputSystem] No player ID available yet');
+                // Player ID not yet initialized
                 return;
             }
-            console.log('[InputSystem] Got player ID:', this.playerId);
+            // Player ID acquired
         }
         
         // Update dash cooldown
@@ -315,7 +336,7 @@ class InputSystem {
         const playerSprite = this.scene.sprites.get(this.playerId);
         if (!playerSprite || !playerSprite.body) {
             if (!playerSprite) {
-                console.log('[InputSystem] No player sprite found for ID:', this.playerId);
+                // Player sprite not found
             }
             return;
         }

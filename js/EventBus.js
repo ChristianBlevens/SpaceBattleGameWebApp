@@ -1,17 +1,17 @@
 // EventBus.js - Central event system for decoupled communication
-// This is the ONLY module that should be exported to window
+// Implements a publish-subscribe pattern for system communication
 
 class EventBus {
     constructor() {
-        this.events = new Map();
-        this.eventQueue = [];
-        this.processing = false;
-        this.debug = false; // Enable/disable console logging
-        this.eventHistory = []; // Track recent events for debugging
+        this.events = new Map();        // event -> listeners array
+        this.eventQueue = [];           // Batched events
+        this.processing = false;        // Queue processing flag
+        this.debug = false;             // Console logging toggle
+        this.eventHistory = [];         // Recent events for debugging
         this.maxHistorySize = 100;
     }
     
-    // Subscribe to an event
+    // Subscribe to an event with optional context binding
     on(event, callback, context = null) {
         if (typeof event !== 'string') {
             console.error('[EventBus] Event name must be a string');
@@ -30,7 +30,7 @@ class EventBus {
         const listener = { callback, context, event };
         this.events.get(event).push(listener);
         
-        // Return unsubscribe function
+        // Return unsubscribe function for cleanup
         return () => {
             const listeners = this.events.get(event);
             if (listeners) {
@@ -45,7 +45,7 @@ class EventBus {
         };
     }
     
-    // Subscribe to an event once
+    // Subscribe to an event that auto-unsubscribes after first call
     once(event, callback, context = null) {
         const wrappedCallback = (...args) => {
             unsubscribe();
@@ -55,7 +55,7 @@ class EventBus {
         return unsubscribe;
     }
     
-    // Emit an event immediately
+    // Emit an event synchronously to all listeners
     emit(event, ...args) {
         if (typeof event !== 'string') {
             console.error('[EventBus] Event name must be a string');
@@ -67,12 +67,12 @@ class EventBus {
         
         // Log if debug is enabled
         if (this.debug) {
-            console.log(`[EventBus] Event: ${event}`, ...args);
+            console.log(`[EventBus] Event: ${event}`, ...args); // Debug logging when enabled
         }
         
         const listeners = this.events.get(event);
         if (listeners && listeners.length > 0) {
-            // Create a copy to avoid issues if listeners modify the array
+            // Copy listeners to prevent modification during iteration
             const listenersCopy = [...listeners];
             
             listenersCopy.forEach(listener => {
@@ -85,7 +85,7 @@ class EventBus {
         }
     }
     
-    // Queue an event for batch processing
+    // Queue an event for deferred batch processing
     queue(event, ...args) {
         this.eventQueue.push({ event, args });
     }
@@ -105,7 +105,7 @@ class EventBus {
         this.processing = false;
     }
     
-    // Clear all listeners for an event
+    // Remove listeners for specific event or callback
     off(event) {
         if (typeof event === 'string') {
             this.events.delete(event);
@@ -179,7 +179,7 @@ class EventBus {
     }
 }
 
-// Game event types - Comprehensive list
+// Game event types - Central registry of all game events
 const GameEvents = {
     // System initialization
     SYSTEM_INIT: 'system:init',
@@ -326,14 +326,11 @@ const GameEvents = {
     TEXTURES_CREATED: 'textures:created'
 };
 
-// Export classes for use by GameInitializer
-// EventBus will be instantiated by GameInitializer, not as a singleton
-
-// Export to window
+// Export for use in game initialization
 window.EventBus = EventBus;
 window.GameEvents = GameEvents;
 
-// Optional: Create a default instance for debugging in console
+// Debug helper for development
 if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     window._debugEventBus = new EventBus();
     window._debugEventBus.setDebug(true);

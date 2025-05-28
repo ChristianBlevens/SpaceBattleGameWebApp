@@ -1,19 +1,20 @@
 // GameState.js - Centralized game state management
+// Single source of truth for all game data with state history tracking
 
 class GameState {
     constructor(eventBus) {
         this.eventBus = eventBus;
         this.state = this.getInitialState();
         this.previousState = null;
-        this.stateHistory = [];
+        this.stateHistory = [];      // State snapshots for debugging
         this.maxHistory = 10;
-        this.listeners = new Set();
+        this.listeners = new Set();   // State change subscribers
         this.playerId = null;
     }
     
     getInitialState() {
         return {
-            // Player state
+            // Player vitals and stats
             player: {
                 alive: true,
                 health: GameConfig.player.initialHealth,
@@ -38,7 +39,7 @@ class GameState {
                 }
             },
             
-            // Game progression
+            // Session statistics and state
             game: {
                 credits: 0,
                 score: 0,
@@ -54,7 +55,7 @@ class GameState {
                 victory: false
             },
             
-            // Wave system
+            // Wave progression tracking
             waves: {
                 current: 0,
                 enemiesRemaining: 0,
@@ -65,7 +66,7 @@ class GameState {
                 nextSpawnTime: 0
             },
             
-            // Mission system
+            // Mission objectives and progress
             mission: {
                 active: null,
                 currentWave: 0,
@@ -75,14 +76,14 @@ class GameState {
                 elapsedTime: 0
             },
             
-            // Active effects
+            // Runtime status effects
             effects: {
                 playerBuffs: [],
                 playerDebuffs: [],
                 globalModifiers: []
             },
             
-            // Settings
+            // User preferences
             settings: {
                 soundEnabled: true,
                 musicEnabled: true,
@@ -95,7 +96,7 @@ class GameState {
         };
     }
     
-    // Subscribe to state changes
+    // Register state change listeners
     subscribe(callback) {
         this.listeners.add(callback);
         return () => this.listeners.delete(callback);

@@ -17,7 +17,7 @@ class UIManager {
     
     init() {
         // No scene reference needed anymore
-        console.log('[UIManager] Initialized');
+        // UI Manager ready
     }
     
     setupEventListeners() {
@@ -124,15 +124,7 @@ class UIManager {
         this.eventBus.on('UPGRADE_APPLIED', (data) => {
             this.updateUpgradeDisplay(data);
         });
-        
-        this.eventBus.on('WAVE_REWARDS', (data) => {
-            this.showNotification(
-                `Wave ${data.waveNumber} Complete! +${data.points} points, +${data.credits} credits`,
-                'success',
-                'fa-trophy'
-            );
-        });
-        
+
         this.eventBus.on('GAME_OVER', (data) => {
             this.showGameOverUI(data.victory);
         });
@@ -163,6 +155,36 @@ class UIManager {
             window.dispatchEvent(new CustomEvent('gameStateUpdate', {
                 detail: { abilitiesDisabled: disabled }
             }));
+        });
+        
+        // Boss events
+        this.eventBus.on('CREATE_BOSS_HEALTH_BAR', (data) => {
+            this.createBossHealthBar(data.name, data.maxHealth);
+        });
+        
+        this.eventBus.on('UPDATE_BOSS_HEALTH_BAR', (data) => {
+            this.updateBossHealthBar(data.percent);
+        });
+        
+        this.eventBus.on('BOSS_DEFEATED', () => {
+            this.removeBossHealthBar();
+            this.showNotification('BOSS DEFEATED!', 'achievement', 'fa-crown');
+        });
+        
+        this.eventBus.on('BOSS_SPAWNED', (data) => {
+            this.showNotification(`${data.name} has arrived!`, 'danger', 'fa-skull');
+        });
+        
+        this.eventBus.on('BOSS_PHASE_ANNOUNCEMENT', (data) => {
+            this.showNotification(`BOSS INCOMING - Wave ${data.waveNumber} Complete!`, 'warning', 'fa-exclamation-triangle');
+        });
+        
+        this.eventBus.on('BOSS_REWARD', (data) => {
+            this.showNotification(`Boss Defeated! +${data.credits} credits, +${data.upgrades} upgrades!`, 'achievement', 'fa-trophy');
+        });
+        
+        this.eventBus.on('REMOVE_BOSS_HEALTH_BAR', () => {
+            this.removeBossHealthBar();
         });
     }
     
@@ -465,6 +487,96 @@ class UIManager {
             } else {
                 indicator.style.display = 'none';
             }
+        }
+    }
+    
+    // Boss health bar methods
+    createBossHealthBar(name, maxHealth) {
+        // Create boss health bar container
+        let bossHealthContainer = document.getElementById('boss-health-container');
+        if (!bossHealthContainer) {
+            bossHealthContainer = document.createElement('div');
+            bossHealthContainer.id = 'boss-health-container';
+            bossHealthContainer.style.cssText = `
+                position: fixed;
+                top: 80px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 60%;
+                max-width: 600px;
+                background: rgba(0, 0, 0, 0.8);
+                border: 3px solid #ff0000;
+                border-radius: 10px;
+                padding: 10px;
+                z-index: 1000;
+                display: none;
+                box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            `;
+            document.body.appendChild(bossHealthContainer);
+        }
+        
+        // Create boss health bar content
+        bossHealthContainer.innerHTML = `
+            <div style="text-align: center; margin-bottom: 10px;">
+                <h2 style="color: #ff0000; margin: 0; font-family: 'Orbitron', monospace; font-size: 24px; text-shadow: 0 0 10px #ff0000;">
+                    <i class="fa fa-skull"></i> ${name} <i class="fa fa-skull"></i>
+                </h2>
+            </div>
+            <div style="position: relative; height: 30px; background: #111; border: 2px solid #ff0000; border-radius: 15px; overflow: hidden;">
+                <div id="boss-health-fill" style="
+                    width: 100%;
+                    height: 100%;
+                    background: linear-gradient(90deg, #ff0000, #ff4444);
+                    transition: width 0.3s ease;
+                    box-shadow: 0 0 10px #ff0000;
+                "></div>
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-family: 'Orbitron', monospace;">
+                    <span id="boss-health-text">100%</span>
+                </div>
+            </div>
+        `;
+        
+        // Show with animation
+        bossHealthContainer.style.display = 'block';
+        bossHealthContainer.animate([
+            { opacity: 0, transform: 'translateX(-50%) translateY(-20px)' },
+            { opacity: 1, transform: 'translateX(-50%) translateY(0)' }
+        ], {
+            duration: 500,
+            easing: 'ease-out'
+        });
+        
+        // Store max health for percentage calculations
+        this.bossMaxHealth = maxHealth;
+    }
+    
+    updateBossHealthBar(healthPercent) {
+        const healthFill = document.getElementById('boss-health-fill');
+        const healthText = document.getElementById('boss-health-text');
+        
+        if (healthFill && healthText) {
+            healthFill.style.width = `${healthPercent * 100}%`;
+            healthText.textContent = `${Math.floor(healthPercent * 100)}%`;
+            
+            // Change color based on health
+            if (healthPercent < 0.25) {
+                healthFill.style.background = 'linear-gradient(90deg, #ff0000, #880000)';
+            } else if (healthPercent < 0.5) {
+                healthFill.style.background = 'linear-gradient(90deg, #ff0000, #ff4444)';
+            }
+        }
+    }
+    
+    removeBossHealthBar() {
+        const bossHealthContainer = document.getElementById('boss-health-container');
+        if (bossHealthContainer) {
+            bossHealthContainer.animate([
+                { opacity: 1, transform: 'translateX(-50%) translateY(0)' },
+                { opacity: 0, transform: 'translateX(-50%) translateY(-20px)' }
+            ], {
+                duration: 500,
+                easing: 'ease-in'
+            }).onfinish = () => bossHealthContainer.remove();
         }
     }
 }

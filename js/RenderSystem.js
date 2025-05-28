@@ -259,6 +259,9 @@ class RenderSystem {
         });
         
         this.eventBus.on('WAVE_REWARDS', (data) => {
+            // Clear any existing wave messages
+            this.clearGameMessages('wave-complete');
+            
             this.createGameMessage({
                 title: `WAVE ${data.waveNumber} COMPLETE!`,
                 subtitle: `+${data.points} POINTS`,
@@ -888,8 +891,8 @@ class RenderSystem {
             subtitleText.setDepth(1000);
         }
         
-        // Store message reference
-        this.activeMessages.set(messageId, { titleText, subtitleText });
+        // Store message reference with type
+        this.activeMessages.set(messageId, { titleText, subtitleText, messageType });
         
         // Animate entrance
         this.scene.tweens.add({
@@ -910,8 +913,13 @@ class RenderSystem {
         
         // Auto-dismiss after duration
         if (duration > 0) {
-            this.scene.time.delayedCall(duration, () => {
-                this.dismissGameMessage(messageId, callback);
+            // Use a timer event for better reliability
+            const timer = this.scene.time.addEvent({
+                delay: duration,
+                callback: () => {
+                    this.dismissGameMessage(messageId, callback);
+                },
+                callbackScope: this
             });
         }
         
@@ -985,6 +993,20 @@ class RenderSystem {
                 }
             });
         }
+    }
+    
+    // Clear all messages of a specific type
+    clearGameMessages(messageType) {
+        const toRemove = [];
+        this.activeMessages.forEach((message, id) => {
+            if (message.messageType === messageType) {
+                toRemove.push(id);
+            }
+        });
+        
+        toRemove.forEach(id => {
+            this.dismissGameMessage(id);
+        });
     }
     
     // ===== VISUAL MANAGEMENT METHODS =====

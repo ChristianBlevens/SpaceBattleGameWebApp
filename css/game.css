@@ -215,6 +215,13 @@
 .upgrade-btn {
     font-size: 12px;
     padding: 5px 10px;
+    transition: opacity 0.3s ease;
+}
+
+.upgrade-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    filter: grayscale(50%);
 }
 
 /* Mission objectives */
@@ -539,6 +546,23 @@
 body.game-active {
     overflow: hidden;
     background: #000;
+    cursor: crosshair; /* Crosshair cursor for aiming */
+}
+
+/* Default cursor for non-game scenes (menu, etc) */
+body:not(.game-active) {
+    cursor: default;
+}
+
+/* Canvas cursor - crosshair for aiming in game, default otherwise */
+body.game-active #game-container canvas {
+    cursor: crosshair !important;
+}
+
+/* Allow Phaser to control cursor in menu */
+body:not(.game-active) #game-container canvas {
+    /* No !important here - let Phaser's inline styles work */
+    cursor: default;
 }
 
 /* Font loading */
@@ -556,4 +580,42 @@ body {
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
+}
+
+/* Ensure UI overlay doesn't block cursor */
+#ui-overlay {
+    pointer-events: none;
+}
+
+/* But allow interaction with UI elements */
+#ui-overlay > *,
+#ui-overlay button,
+#ui-overlay .clickable {
+    pointer-events: auto;
+}
+
+/* Interactive elements should show pointer cursor */
+button,
+.nes-btn,
+a,
+.clickable,
+[role="button"],
+[onclick],
+.upgrade-btn,
+.ability-slot,
+.pause-buttons button,
+.game-over-buttons button {
+    cursor: pointer !important;
+}
+
+/* Make sure the game container is set up properly */
+#game-container {
+    position: relative;
+}
+
+/* Input fields should show text cursor */
+input[type="text"],
+input[type="number"],
+textarea {
+    cursor: text !important;
 }

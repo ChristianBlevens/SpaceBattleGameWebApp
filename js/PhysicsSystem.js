@@ -1,5 +1,5 @@
-// PhysicsSystem.js - Handles all physics calculations including gravity, collision detection, and forces
-// REFACTORED: Added centralized collision detection, removed direct sprite manipulation
+// PhysicsSystem.js - N-body physics simulation with gravity and collision detection
+// Implements gravitational forces, boundary handling, and spatial optimization
 
 class PhysicsSystem {
     constructor(scene, eventBus) {
@@ -12,16 +12,16 @@ class PhysicsSystem {
         this.maxVelocity = GameConfig.physics.maxVelocity;
         this.gravitationFalloff = GameConfig.physics.gravitationFalloff;
         
-        // Performance optimization: spatial grid for collision detection
+        // Spatial partitioning for efficient collision detection
         this.spatialGrid = new SpatialGrid(GameConfig.world.width, GameConfig.world.height, 500);
         
         // Track applied forces
         this.pendingForces = new Map();
         
-        // Catastrophe wandering properties
+        // Wandering vortex properties
         this.catastropheWanderAngle = Math.random() * Math.PI * 2;
-        this.catastropheWanderSpeed = 150;  // Pixels per second
-        this.catastropheWanderTurnRate = 5.0;  // Much more erratic movement
+        this.catastropheWanderSpeed = 150;
+        this.catastropheWanderTurnRate = 5.0;
         this.catastropheId = null;
         
         // Immunity tracking
@@ -103,7 +103,7 @@ class PhysicsSystem {
     }
     
     applyGravitationalForces(entities, entityManager) {
-        // Apply n-body gravity between all entities
+        // Calculate n-body gravitational forces
         for (let i = 0; i < entities.length; i++) {
             const entityA = entities[i];
             const transformA = entityManager.getComponent(entityA, 'transform');
@@ -111,11 +111,11 @@ class PhysicsSystem {
             
             if (!transformA || !physicsA) continue;
             
-            // Get nearby entities from spatial grid for optimization
+            // Use spatial grid to limit force calculations
             const nearbyEntities = this.spatialGrid.getNearby(
                 transformA.x, 
                 transformA.y, 
-                10000 // Max gravity range for planets (2x increase)
+                10000 // Extended gravity range for planets
             );
             
             nearbyEntities.forEach(entityB => {
@@ -180,6 +180,7 @@ class PhysicsSystem {
     }
     
     applySpiralForce(entities, entityManager) {
+        // Apply gentle spiral force around world center
         const centerX = GameConfig.world.centerX;
         const centerY = GameConfig.world.centerY;
         
@@ -229,6 +230,7 @@ class PhysicsSystem {
     }
     
     integratePhysics(entities, entityManager, deltaTime) {
+        // Update positions using velocity and acceleration
         entities.forEach(entityId => {
             const transform = entityManager.getComponent(entityId, 'transform');
             const physics = entityManager.getComponent(entityId, 'physics');
@@ -262,7 +264,7 @@ class PhysicsSystem {
     }
     
     detectCollisions(entityManager) {
-        // Projectile collisions
+        // Check projectile-entity collisions
         const projectiles = entityManager.getEntitiesByType('projectile');
         projectiles.forEach(projectileId => {
             const projectileSprite = this.scene.sprites.get(projectileId);
@@ -348,15 +350,16 @@ class PhysicsSystem {
     }
     
     checkCollision(spriteA, spriteB) {
-        // Ensure both sprites have valid bodies before checking collision
+        // Validate sprites before collision check
         if (!spriteA || !spriteB || !spriteA.body || !spriteB.body) {
             return false;
         }
-        // Use Matter.js collision detection
+        // Delegate to Matter.js physics engine
         return this.scene.matter.collision.collides(spriteA.body, spriteB.body);
     }
     
     handleBoundaries(entities, entityManager) {
+        // Enforce world boundaries with elastic collision
         const bounds = {
             left: 0,
             right: GameConfig.world.width,
@@ -430,6 +433,7 @@ class PhysicsSystem {
     
     // Create explosion force
     createExplosionForce(x, y, force, radius) {
+        // Apply radial force from explosion center
         const affectedEntities = this.spatialGrid.getNearby(x, y, radius);
         
         affectedEntities.forEach(entityId => {
@@ -578,7 +582,7 @@ class PhysicsSystem {
     
 }
 
-// Spatial grid for performance optimization
+// Spatial partitioning grid for efficient proximity queries
 class SpatialGrid {
     constructor(width, height, cellSize) {
         this.width = width;

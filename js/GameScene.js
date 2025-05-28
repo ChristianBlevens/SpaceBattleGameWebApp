@@ -63,7 +63,7 @@ class GameScene extends Phaser.Scene {
         
         // Start first wave after delay
         this.time.delayedCall(2000, () => {
-            console.log('[GameScene] Starting wave 1');
+            // Initialize first wave
             // Ensure wave state is clean before starting
             this.gameInitializer.gameState.update('waves.waveInProgress', false);
             waveSystem.startWave(1);
@@ -801,9 +801,31 @@ class GameScene extends Phaser.Scene {
                 eventBus.emit('GAME_PAUSE', { paused });
             },
             restart: () => {
+                // Clear UI states before restarting
+                gameState.update('game.paused', false);
+                gameState.update('game.gameOver', false);
+                
+                // Directly update Alpine.js data
+                const alpineData = Alpine.$data(document.querySelector('[x-data="gameUI"]'));
+                if (alpineData) {
+                    alpineData.paused = false;
+                    alpineData.gameOver = false;
+                }
+                
                 this.scene.restart();
             },
             menu: () => {
+                // Clear all UI states before returning to menu
+                gameState.update('game.paused', false);
+                gameState.update('game.gameOver', false);
+                
+                // Directly update Alpine.js data
+                const alpineData = Alpine.$data(document.querySelector('[x-data="gameUI"]'));
+                if (alpineData) {
+                    alpineData.paused = false;
+                    alpineData.gameOver = false;
+                }
+                
                 // Stop the game properly before returning to menu
                 eventBus.emit('AUDIO_STOP_MUSIC');
                 this.matter.world.pause();
@@ -870,7 +892,7 @@ class GameScene extends Phaser.Scene {
                     
                     // Debug log wave state changes
                     if (this.lastWaveInProgress !== waveInProgress) {
-                        console.log('[GameScene] Wave state changed:', this.lastWaveInProgress, '->', waveInProgress);
+                        // Wave state transition detected
                         this.lastWaveInProgress = waveInProgress;
                     }
                     

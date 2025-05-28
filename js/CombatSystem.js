@@ -1,5 +1,5 @@
-// CombatSystem.js - Handles all combat-related logic including damage calculation and validation
-// REFACTORED: Removed rendering, UI, and upgrade responsibilities. Now purely handles combat logic.
+// CombatSystem.js - Combat mechanics and damage resolution
+// Handles collision response, damage calculation, and combat events
 
 class CombatSystem {
     constructor(scene, eventBus, entityManager, gameState) {
@@ -10,7 +10,7 @@ class CombatSystem {
     }
     
     init() {
-        // Listen for collision events from PhysicsSystem
+        // Register collision handlers
         this.eventBus.on('COLLISION_DETECTED', (data) => {
             this.handleCollision(data);
         });
@@ -29,10 +29,15 @@ class CombatSystem {
         this.eventBus.on('TITAN_SLAM', (data) => {
             this.handleTitanSlam(data);
         });
+        
+        // Listen for debug enemy deaths
+        this.eventBus.on('COMBAT_ENEMY_DEATH', (data) => {
+            this.handleEnemyDeath(data.entityId, data.transform);
+        });
     }
     
     update(deltaTime, entityManager) {
-        // Update invulnerability timers
+        // Process combat state updates
         const healthEntities = entityManager.query('health');
         
         healthEntities.forEach(entityId => {
@@ -45,13 +50,13 @@ class CombatSystem {
                 }
             }
             
-            // Health regeneration
+            // Apply health regeneration
             if (health.regen > 0 && health.current < health.max) {
                 health.current = Math.min(health.max, health.current + health.regen * deltaTime);
             }
         });
         
-        // Update combo timer
+        // Manage combo system timing
         const comboTimer = this.gameState.get('game.comboTimer');
         if (comboTimer > 0) {
             const newTimer = Math.max(0, comboTimer - deltaTime * 1000);
@@ -68,13 +73,13 @@ class CombatSystem {
         const { entityA, entityB, type } = data;
         
         if (type === 'projectile') {
-            // Validate projectile collision
+            // Process projectile impact
             const projectileData = this.entityManager.getComponent(entityA, 'projectile');
             if (!projectileData) return;
             
-            // Check if can damage target
+            // Validate damage eligibility
             if (this.canDamageTarget(entityA, entityB)) {
-                // Check if already hit (for penetrating projectiles)
+                // Track penetrating projectile hits
                 if (!projectileData.hitEntities.has(entityB)) {
                     projectileData.hitEntities.add(entityB);
                     
@@ -126,6 +131,13 @@ class CombatSystem {
     }
     
     handleEnemyShootRequest(data) {
+        // Check if this is a minion spawn request
+        if (data.spawnInfo) {
+            // Forward minion spawn to wave system
+            this.eventBus.emit('SPAWN_ENEMY', data.spawnInfo);
+            return;
+        }
+        
         // Validate the shoot request
         const weapon = this.entityManager.getComponent(data.shooterId, 'weapon');
         if (!weapon || weapon.lastFireTime > 0) return;
@@ -143,6 +155,7 @@ class CombatSystem {
     }
     
     canDamageTarget(projectileId, targetId) {
+        // Determine if projectile can damage target based on faction and type
         const projectileData = this.entityManager.getComponent(projectileId, 'projectile');
         const targetEntity = this.entityManager.getEntity(targetId);
         
@@ -197,15 +210,37 @@ class CombatSystem {
     }
     
     damageEnemy(enemyId, damage) {
+        // Apply damage to enemy with boss modifiers
         const health = this.entityManager.getComponent(enemyId, 'health');
         const transform = this.entityManager.getComponent(enemyId, 'transform');
+        const entity = this.entityManager.getEntity(enemyId);
         
         if (!health) return;
         
-        //console.log(`[CombatSystem] Damaging enemy ${enemyId}: ${damage} damage, current health: ${health.current}/${health.max}`);
+        // Check for boss special properties
+        let actualDamage = damage;
+        if (entity && entity.type === 'boss') {
+            const bossComponent = this.entityManager.getComponent(enemyId, 'boss');
+            if (bossComponent) {
+                // Apply damage reduction from tank trait
+                const damageReduction = this.getBossDamageReduction(enemyId);
+                actualDamage = Math.floor(damage * (1 - damageReduction));
+                
+                // Check phantom dodge chance
+                if (this.checkBossDodge(enemyId)) {
+                    this.eventBus.emit('BOSS_DODGED', {
+                        entityId: enemyId,
+                        position: transform ? { x: transform.x, y: transform.y } : null
+                    });
+                    return; // Attack missed
+                }
+            }
+        }
+        
+        //console.log(`[CombatSystem] Damaging enemy ${enemyId}: ${actualDamage} damage, current health: ${health.current}/${health.max}`);
         
         // Apply damage
-        health.current -= damage;
+        health.current -= actualDamage;
         
         if (health.current <= 0) {
             // Enemy defeated
@@ -214,7 +249,7 @@ class CombatSystem {
             // Enemy damaged but alive
             this.eventBus.emit('ENEMY_DAMAGED', {
                 entityId: enemyId,
-                damage: damage,
+                damage: actualDamage,
                 position: transform ? { x: transform.x, y: transform.y } : null
             });
             
@@ -276,7 +311,7 @@ class CombatSystem {
     collectPowerup(playerId, powerupId, powerupData) {
         const transform = this.entityManager.getComponent(powerupId, 'transform');
         
-        // Apply effect based on type
+        // Apply powerup effect by type
         switch (powerupData.type) {
             case 'health':
                 this.gameState.healPlayer(powerupData.value);
@@ -336,8 +371,7 @@ class CombatSystem {
     }
     
     processWaveRewards(waveNumber) {
-        //console.log('[CombatSystem] Processing wave rewards for wave', waveNumber);
-        // Calculate and apply wave completion rewards
+        // Award wave completion bonuses
         const waveBonus = 1000 * waveNumber;
         this.gameState.addScore(waveBonus);
         this.gameState.addCredits(500 * waveNumber);
@@ -354,9 +388,10 @@ class CombatSystem {
     }
     
     handleTitanSlam(data) {
+        // Area damage effect for titan slam attack
         const { attackerId, x, y, radius, damage, knockback } = data;
         
-        // Get attacker faction to avoid friendly fire
+        // Determine attacker faction for friendly fire check
         const attackerAI = this.entityManager.getComponent(attackerId, 'ai');
         const attackerFaction = attackerAI ? attackerAI.faction : null;
         
@@ -428,6 +463,33 @@ class CombatSystem {
         
         // Sound effect
         this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
+    }
+    
+    // Boss-specific damage calculation helpers
+    getBossDamageReduction(bossId) {
+        // Get boss special properties through event system
+        const bossData = this.getBossData(bossId);
+        if (!bossData || !bossData.specialProperties) return 0;
+        
+        return bossData.specialProperties.damageReduction || 0;
+    }
+    
+    checkBossDodge(bossId) {
+        const bossData = this.getBossData(bossId);
+        if (!bossData || !bossData.specialProperties) return false;
+        
+        const dodgeChance = bossData.specialProperties.dodgeChance || 0;
+        return Math.random() < dodgeChance;
+    }
+    
+    getBossData(bossId) {
+        // Request boss data from BossSystem via event
+        let bossData = null;
+        this.eventBus.emit('REQUEST_BOSS_DATA', {
+            bossId: bossId,
+            callback: (data) => { bossData = data; }
+        });
+        return bossData;
     }
 }
 

@@ -1,41 +1,41 @@
-// GameInitializer.js - Handles system initialization for the game scene
+// GameInitializer.js - System initialization and lifecycle management
+// Coordinates all game systems and their interdependencies
 
 class GameInitializer {
     constructor(scene) {
         this.scene = scene;
         
-        // Core systems
+        // Initialize core infrastructure
         this.eventBus = new EventBus();
         this.entityManager = new EntityManager(this.eventBus);
         this.gameState = new GameState(this.eventBus);
         
-        // Entity factory (needed by other systems)
+        // Entity creation factory
         this.entityFactory = new EntityFactory(this.entityManager, this.eventBus);
         
-        // Game systems
+        // Initialize gameplay systems
         this.physicsSystem = new PhysicsSystem(scene, this.eventBus);
         this.aiSystem = new AiSystem(scene, this.eventBus);
         this.weaponSystem = new WeaponSystem(scene, this.eventBus, this.entityManager, this.entityFactory);
         this.combatSystem = new CombatSystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.waveSystem = new WaveSystem(scene, this.eventBus, this.gameState, this.entityFactory);
+        this.bossSystem = new BossSystem(scene, this.eventBus, this.entityManager, this.entityFactory);
         this.abilitySystem = new AbilitySystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.upgradeSystem = new UpgradeSystem(this.eventBus, this.gameState, this.entityManager);
         this.disasterSystem = new DisasterSystem(scene);
         
-        // Render and input systems
+        // Initialize I/O systems
         this.renderSystem = new RenderSystem(scene, this.eventBus, this.entityManager);
         this.inputSystem = new InputSystem(scene, this.eventBus, this.entityManager, this.gameState);
         
-        // Managers
+        // Initialize managers
         this.audioManager = new AudioManager(this.eventBus);
         this.uiManager = new UIManager(this.eventBus, this.gameState);
     }
     
     initializeAllSystems() {
-        // Initialize audio
+        // Initialize managers first
         this.audioManager.init();
-        
-        // Initialize UI
         this.uiManager.init();
         
         // Initialize input
@@ -62,22 +62,24 @@ class GameInitializer {
         // Initialize wave system
         this.waveSystem.init();
         
+        // Initialize boss system
+        this.bossSystem.init();
+        
         // Initialize upgrade system
         this.upgradeSystem.init();
         
-        // Initialize disaster system
-        console.log('[GameInitializer] Initializing disaster system with eventBus:', !!this.eventBus);
+        // Initialize disaster system with dependencies
         this.disasterSystem.eventBus = this.eventBus;
         this.disasterSystem.entityManager = this.entityManager;
         this.disasterSystem.renderSystem = this.renderSystem;
         this.disasterSystem.init();
         
-        // Set up inter-system communication
+        // Configure event handlers for system coordination
         this.setupSystemCommunication();
     }
     
     updateAllSystems(dt) {
-        // Update input first
+        // Process systems in dependency order
         this.inputSystem.update(dt);
         
         // Update physics
@@ -98,11 +100,10 @@ class GameInitializer {
         // Update wave system
         this.waveSystem.update(dt);
         
+        // Update boss system
+        this.bossSystem.update(dt);
+        
         // Update disaster system
-        if (!this.disasterSystemLogged && this.disasterSystem) {
-            console.log('[GameInitializer] DisasterSystem update is being called');
-            this.disasterSystemLogged = true;
-        }
         this.disasterSystem.update(dt);
         
         // Update rendering
@@ -113,17 +114,11 @@ class GameInitializer {
     }
     
     setupSystemCommunication() {
-        // Set up event listeners for system communication
+        // Configure cross-system event handlers
         
-        // When entities are destroyed, clean up sprites
+        // Entity lifecycle coordination
         this.eventBus.on('ENTITY_DESTROYED', (data) => {
             this.renderSystem.destroySprite(data.entityId);
-        });
-        
-        // When entities are created, create sprites
-        this.eventBus.on('ENTITY_CREATED', (data) => {
-            // TODO: Sprites should be created by the scene when creating entities
-            // this.renderSystem.createSprite(data.entityId);
         });
         
         // Game state changes
@@ -141,13 +136,15 @@ class GameInitializer {
         // Player damage
         this.eventBus.on('PLAYER_HIT', (data) => {
             this.gameState.damagePlayer(data.damage);
-            this.audioManager.playSound('hit');
+            this.eventBus.emit('AUDIO_PLAY', { sound: 'hit' });
         });
         
         // Wave events
         this.eventBus.on('WAVE_COMPLETE', (data) => {
-            this.gameState.update('mission.currentWave', data.waveNumber);
-            this.gameState.addCredits(data.waveNumber * 100);
+            if (data && data.waveNumber) {
+                this.gameState.update('mission.currentWave', data.waveNumber);
+                this.gameState.addCredits(data.waveNumber * 100);
+            }
         });
         
         // Ability usage
@@ -166,7 +163,7 @@ class GameInitializer {
     }
     
     destroy() {
-        // Clean up all systems
+        // Clean up all systems in reverse order
         this.inputSystem.destroy();
         this.renderSystem.destroy();
         this.audioManager.destroy();

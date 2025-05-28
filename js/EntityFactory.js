@@ -1,5 +1,5 @@
-// EntityFactory.js - Handles all entity creation without visual effects or collision logic
-// REFACTORED: Removed visual effects and collision setup, now purely creates entities
+// EntityFactory.js - Centralized entity creation factory
+// Creates all game entities with proper component composition
 
 class EntityFactory {
     constructor(entityManager, eventBus) {
@@ -13,7 +13,7 @@ class EntityFactory {
     }
     
     createPlayer(x, y) {
-        // Create player entity with all components
+        // Initialize player with full component set
         const playerId = this.entityManager.createEntity('player', {
             transform: { x: x, y: y, rotation: 0, scale: 1, prevX: x, prevY: y },
             physics: { velocity: { x: 5, y: 0 }, acceleration: { x: 0, y: 0 }, mass: 15, radius: 40, damping: 0.999, maxSpeed: 15, elasticity: 0.8 },
@@ -31,10 +31,9 @@ class EntityFactory {
             faction: Components.faction('player', 0x00ffff, [])
         });
         
-        // Create Matter.js sprite
+        // Configure physics body
         const sprite = this.scene.matter.add.sprite(x, y, 'player');
-        // Player texture is 32x16, so use average for circle hitbox
-        sprite.setCircle(12);
+        sprite.setCircle(12); // Circular hitbox for smooth collision
         sprite.setMass(15);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
@@ -46,7 +45,7 @@ class EntityFactory {
         sprite.setDepth(20); // Player above most entities
         this.scene.sprites.set(playerId, sprite);
         
-        // Request trail creation
+        // Initialize visual trail effect
         this.eventBus.emit('CREATE_TRAIL', {
             entityId: playerId,
             trailConfig: { points: [], maxLength: 20, color: 0x00ffff, width: 3, alpha: 0.5, fadeRate: 0.05 }
@@ -61,9 +60,8 @@ class EntityFactory {
         return playerId;
     }
     
-    createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}, strengthMultiplier = 1) {
-        //console.log('[EntityFactory] createEnemy called:', { faction, x, y, initialVelocity, strengthMultiplier });
-        
+    createEnemy(faction, x, y, initialVelocity = {x: 0, y: 0}, strengthMultiplier = 1, isNecromancerMinion = false) {
+        // Validate faction configuration
         const factionConfig = GameConfig.factions[faction];
         if (!factionConfig) {
             console.error('[EntityFactory] No faction config for:', faction);
@@ -72,14 +70,14 @@ class EntityFactory {
         
         //console.log('[EntityFactory] Faction config:', factionConfig);
         
-        // Apply strength multiplier to stats
+        // Scale enemy stats by wave difficulty
         const enhancedHealth = Math.floor(factionConfig.health * strengthMultiplier);
         const enhancedDamage = Math.floor(factionConfig.damage * strengthMultiplier);
         
         //console.log(`[EntityFactory] Creating ${faction} with health: ${enhancedHealth}, damage: ${enhancedDamage}`);
         
-        // Create enemy entity
-        const enemyId = this.entityManager.createEntity('enemy', {
+        // Compose enemy components
+        const components = {
             transform: Components.transform(x, y),
             physics: Components.physics(
                 initialVelocity.x, 
@@ -92,7 +90,14 @@ class EntityFactory {
             ai: Components.ai(factionConfig.behavior, faction),
             sprite: Components.sprite(`enemy-${faction}`),
             faction: Components.faction(faction, factionConfig.color, [faction])
-        });
+        };
+        
+        // Mark necromancer summons
+        if (isNecromancerMinion) {
+            components.ai.isNecromancerMinion = true;
+        }
+        
+        const enemyId = this.entityManager.createEntity('enemy', components);
         
         //console.log('[EntityFactory] Enemy entity created with ID:', enemyId);
         
@@ -337,6 +342,68 @@ class EntityFactory {
         });
         
         return catastropheId;
+    }
+    
+    createBoss(x, y, bossStats) {
+        // Create boss entity with specified stats
+        
+        // Create boss entity with all components
+        const bossId = this.entityManager.createEntity('boss', {
+            transform: Components.transform(x, y),
+            physics: {
+                velocity: { x: 0, y: 0 },
+                acceleration: { x: 0, y: 0 },
+                mass: bossStats.mass,
+                radius: 40 * bossStats.scale,
+                damping: 0.99,
+                maxSpeed: bossStats.speed,
+                elasticity: 0.9
+            },
+            health: Components.health(bossStats.health, bossStats.maxHealth),
+            weapon: Components.weapon('boss', bossStats.damage, 800),
+            ai: Components.ai(bossStats.behavior, 'boss'),
+            sprite: Components.sprite('boss'),
+            faction: Components.faction('boss', bossStats.color, ['boss']),
+            boss: {
+                abilities: bossStats.abilities,
+                name: bossStats.name,
+                scale: bossStats.scale,
+                phase: 1
+            }
+        });
+        
+        // Create Matter.js sprite - using enemy sprite as placeholder for now
+        const sprite = this.scene.matter.add.sprite(x, y, 'enemy-titan');
+        sprite.setCircle(40 * bossStats.scale);
+        sprite.setMass(bossStats.mass);
+        sprite.setFriction(0);
+        sprite.setFrictionAir(0);
+        sprite.setBounce(0.9);
+        sprite.setScale(bossStats.scale);
+        sprite.setTint(bossStats.color);
+        sprite.setData('entityId', bossId);
+        sprite.setData('entityType', 'boss');
+        sprite.setData('isBoss', true);
+        
+        // Store references
+        sprite.setDepth(30); // Boss above other entities
+        this.scene.sprites.set(bossId, sprite);
+        
+        // Add boss glow/aura effect
+        this.eventBus.emit('CREATE_BOSS_AURA', {
+            entityId: bossId,
+            color: bossStats.color,
+            scale: bossStats.scale
+        });
+        
+        // Emit entity created event
+        this.eventBus.emit('ENTITY_CREATED', {
+            id: bossId,
+            type: 'boss',
+            stats: bossStats
+        });
+        
+        return bossId;
     }
 }
 

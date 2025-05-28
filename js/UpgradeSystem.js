@@ -26,12 +26,12 @@ class UpgradeSystem {
     }
     
     handleUpgradeRequest(upgradeType) {
-        console.log('[UpgradeSystem] Upgrade requested:', upgradeType);
+        // Process upgrade request
         
         const currentCredits = this.gameState.get('game.credits');
         const upgradeCost = this.getUpgradeCost(upgradeType);
         
-        console.log('[UpgradeSystem] Current credits:', currentCredits, 'Cost:', upgradeCost);
+        // Validate upgrade affordability
         
         if (currentCredits >= upgradeCost) {
             // Can afford upgrade
@@ -56,10 +56,10 @@ class UpgradeSystem {
             // Update UI with new costs
             this.updateUpgradeCosts();
             
-            console.log('[UpgradeSystem] Upgrade applied successfully');
+            // Upgrade applied
         } else {
             // Not enough credits
-            console.log('[UpgradeSystem] Not enough credits for upgrade');
+            // Insufficient credits
             this.eventBus.emit('UPGRADE_FAILED', {
                 upgradeType: upgradeType,
                 reason: 'insufficient_credits'

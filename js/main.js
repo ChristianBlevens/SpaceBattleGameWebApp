@@ -1,5 +1,5 @@
 // main.js - Game Entry Point and Configuration
-
+// Initializes Phaser game and Alpine.js UI bindings
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('gameUI', () => ({
@@ -183,7 +183,7 @@ document.addEventListener('alpine:init', () => {
 
 // Global game configuration
 const GameConfig = {
-    // World settings
+    // World dimensions
     world: {
         width: 16000,
         height: 12000,
@@ -191,16 +191,16 @@ const GameConfig = {
         centerY: 6000
     },
     
-    // Physics constants
+    // Physics simulation parameters
     physics: {
-        gravity: 50.0,  // Much stronger gravity to be noticeable
-        spiralForce: 0.0003,
-        damping: 0.999,
-        maxVelocity: 15,
-        gravitationFalloff: 1.8  // Slightly higher falloff for more realistic gravity
+        gravity: 50.0,          // Gravitational constant
+        spiralForce: 0.0003,    // Central spiral effect
+        damping: 0.999,         // Velocity damping
+        maxVelocity: 15,        // Speed limit
+        gravitationFalloff: 1.8 // Gravity distance falloff
     },
     
-    // Player settings
+    // Player initial stats
     player: {
         initialHealth: 100,
         initialEnergy: 100,
@@ -211,14 +211,14 @@ const GameConfig = {
         energyRegen: 0.5
     },
     
-    // Enemy factions
+    // Enemy faction definitions
     factions: {
         swarm: {
-            color: 0xff69b4, // Hot pink to stand out
+            color: 0xff69b4,     // Hot pink
             behavior: 'aggressive',
-            speed: 8.0,      // High speed
-            health: 10,      // Low health
-            damage: 10,      // Medium damage
+            speed: 8.0,          // Fast, weak units
+            health: 10,
+            damage: 10,
             size: 0.7,
             spawnCount: 15
         },
@@ -276,7 +276,7 @@ const GameConfig = {
     }
 };
 
-// Phaser game configuration
+// Phaser 3 engine configuration
 const phaserConfig = {
     type: Phaser.WEBGL,
     width: '100%',
@@ -308,9 +308,9 @@ const phaserConfig = {
     }
 };
 
-// Wait for DOM to be ready
+// Initialize game when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize the game
+    // Create Phaser game instance
     const game = new Phaser.Game(phaserConfig);
     
     // Store game reference globally for debugging only
@@ -332,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Log successful initialization
+    // Initialization complete
     console.log('Gravity Wars: Cosmic Arena initialized');
 });
 

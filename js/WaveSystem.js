@@ -1,5 +1,5 @@
-// WaveSystem.js - Manages enemy waves and spawning
-// REFACTORED: Removed visual effects and direct UI manipulation
+// WaveSystem.js - Enemy wave management and progression
+// Handles wave generation, enemy spawning patterns, and progression logic
 
 class WaveSystem {
     constructor(scene, eventBus, gameState, entityFactory) {
@@ -12,8 +12,10 @@ class WaveSystem {
         this.spawnTimer = 0;
         this.spawnsRemaining = 0;
         this.nextSpawnTime = 0;
+        this.bossPhase = false;
+        this.awaitingBossDefeat = false;
         
-        // Spawn points around the map edges
+        // Dynamic spawn points for edge spawning
         this.spawnPoints = [
             // Top edge
             { x: () => Phaser.Math.Between(1000, GameConfig.world.width - 1000), y: () => 100 },
@@ -27,7 +29,7 @@ class WaveSystem {
     }
     
     init() {
-        // Listen for game start
+        // Initialize event handlers
         this.eventBus.on('GAME_START', () => {
             this.reset();
         });
@@ -35,6 +37,21 @@ class WaveSystem {
         // Listen for enemy deaths to check wave completion
         this.eventBus.on('ENEMY_KILLED', () => {
             this.checkWaveComplete();
+        });
+        
+        // Listen for boss defeat
+        this.eventBus.on('BOSS_DEFEATED', () => {
+            this.onBossDefeated();
+        });
+        
+        // Listen for continue after boss
+        this.eventBus.on('CONTINUE_TO_NEXT_WAVE', () => {
+            this.continueToNextWave();
+        });
+        
+        // Listen for enemy spawn requests
+        this.eventBus.on('SPAWN_ENEMY', (data) => {
+            this.spawnEnemy(data);
         });
     }
     
@@ -44,6 +61,8 @@ class WaveSystem {
         this.spawnTimer = 0;
         this.spawnsRemaining = 0;
         this.nextSpawnTime = 0;
+        this.bossPhase = false;
+        this.awaitingBossDefeat = false;
     }
     
     startWave(waveNumber) {
@@ -96,13 +115,13 @@ class WaveSystem {
     }
     
     generateWaveConfig(waveNumber) {
-        // Base counts for wave 1
+        // Base enemy counts scaled by wave
         const baseSwarm = 20;
         const baseSentinel = 10;
         const basePhantom = 10;
         const baseTitan = 3;
         
-        // Calculate counts with scaling
+        // Apply exponential scaling per wave
         const swarmCount = Math.floor(baseSwarm * Math.pow(1.2, waveNumber - 1));
         const sentinelCount = Math.floor(baseSentinel * Math.pow(1.15, waveNumber - 1));
         const phantomCount = Math.floor(basePhantom * Math.pow(1.15, waveNumber - 1));
@@ -122,9 +141,9 @@ class WaveSystem {
             titanPositions: []
         };
         
-        // Calculate spawn positions for organized groups
+        // Generate tactical spawn patterns
         
-        // Swarm - all spawn together in a cluster
+        // Swarm formation - clustered group spawn
         const swarmCenter = this.getRandomMapPosition();
         for (let i = 0; i < swarmCount; i++) {
             const offset = this.getClusterOffset(i, 50); // Small spacing
@@ -138,8 +157,8 @@ class WaveSystem {
             });
         }
         
-        // Sentinels - spawn near each other with set intervals
-        const sentinelLine = this.getLinePositions(sentinelCount, 450); // 450 unit spacing (3x farther apart)
+        // Sentinel formation - defensive line
+        const sentinelLine = this.getLinePositions(sentinelCount, 450);
         for (let i = 0; i < sentinelCount; i++) {
             config.spawns.push({
                 type: 'sentinel',
@@ -148,7 +167,7 @@ class WaveSystem {
             });
         }
         
-        // Phantoms - spawn randomly around the map
+        // Phantom distribution - scattered stealth units
         for (let i = 0; i < phantomCount; i++) {
             config.spawns.push({
                 type: 'phantom',
@@ -157,7 +176,7 @@ class WaveSystem {
             });
         }
         
-        // Titans - spawn on completely different sides of the map
+        // Titan placement - widely separated heavy units
         const titanPositions = this.getDistributedPositions(titanCount);
         for (let i = 0; i < titanCount; i++) {
             config.spawns.push({
@@ -198,6 +217,7 @@ class WaveSystem {
     }
     
     update(deltaTime) {
+        // Skip if no active wave
         if (!this.gameState.get('waves.waveInProgress')) {
             return;
         }
@@ -277,7 +297,8 @@ class WaveSystem {
             x, 
             y, 
             initialVelocity,
-            strengthMultiplier
+            strengthMultiplier,
+            spawnInfo.isNecromancerMinion // Pass necromancer minion flag
         );
         
         //console.log('[WaveSystem] Enemy created with ID:', enemyId);
@@ -340,16 +361,9 @@ class WaveSystem {
             // Play victory sound
             this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
             
-            // Start next wave after delay
-            this.scene.time.delayedCall(5000, () => {
-                const nextWave = waveNumber + 1;
-                if (nextWave <= 20) { // Max 20 waves
-                    //console.log('[WaveSystem] Starting next wave:', nextWave);
-                    this.startWave(nextWave);
-                } else {
-                    // Game victory!
-                    this.eventBus.emit('GAME_VICTORY');
-                }
+            // Start boss phase after delay
+            this.scene.time.delayedCall(3000, () => {
+                this.startBossPhase();
             });
         }
     }
@@ -378,7 +392,7 @@ class WaveSystem {
     }
     
     getClusterOffset(index, spacing) {
-        // Create a hexagonal cluster pattern
+        // Generate hexagonal formation positions
         const ring = Math.floor((Math.sqrt(1 + 8 * index) - 1) / 2);
         const indexInRing = index - (ring * (ring + 1)) / 2;
         const angle = (indexInRing / Math.max(1, ring * 6)) * Math.PI * 2;
@@ -390,8 +404,9 @@ class WaveSystem {
     }
     
     getLinePositions(count, spacing) {
+        // Create linear formation along map edge
         const positions = [];
-        const edge = Math.floor(Math.random() * 4); // Random edge
+        const edge = Math.floor(Math.random() * 4);
         
         const margin = 200;
         const totalLength = (count - 1) * spacing;
@@ -426,10 +441,11 @@ class WaveSystem {
     }
     
     getDistributedPositions(count) {
+        // Distribute entities across map sectors
         const positions = [];
         const sections = [];
         
-        // Divide map into sections
+        // Create grid-based sectors
         const sectionWidth = GameConfig.world.width / Math.ceil(Math.sqrt(count));
         const sectionHeight = GameConfig.world.height / Math.ceil(Math.sqrt(count));
         
@@ -454,6 +470,47 @@ class WaveSystem {
         }
         
         return positions;
+    }
+    
+    startBossPhase() {
+        this.bossPhase = true;
+        this.awaitingBossDefeat = true;
+        this.gameState.update('waves.bossPhase', true);
+        
+        // Announce boss phase
+        this.eventBus.emit('BOSS_PHASE_ANNOUNCEMENT', {
+            waveNumber: this.currentWave
+        });
+        
+        // Start boss phase after announcement
+        this.scene.time.delayedCall(2000, () => {
+            this.eventBus.emit('START_BOSS_PHASE', {
+                waveNumber: this.currentWave
+            });
+        });
+    }
+    
+    onBossDefeated() {
+        if (!this.awaitingBossDefeat) return;
+        
+        this.bossPhase = false;
+        this.awaitingBossDefeat = false;
+        this.gameState.update('waves.bossPhase', false);
+        
+        // Boss defeated announcement will be handled by BossSystem
+    }
+    
+    continueToNextWave() {
+        const nextWave = this.currentWave + 1;
+        
+        if (nextWave <= 20) { // Campaign length
+            this.scene.time.delayedCall(3000, () => {
+                this.startWave(nextWave);
+            });
+        } else {
+            // Victory condition reached
+            this.eventBus.emit('GAME_VICTORY');
+        }
     }
 }
 

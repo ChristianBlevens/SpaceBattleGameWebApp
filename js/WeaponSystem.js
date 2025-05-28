@@ -1,5 +1,5 @@
-// WeaponSystem.js - Handles weapon state and projectile creation only
-// REFACTORED: Removed collision detection and direct entity destruction
+// WeaponSystem.js - Weapon mechanics and projectile management
+// Manages weapon states, charging, and projectile lifecycle
 
 class WeaponSystem {
     constructor(scene, eventBus, entityManager, entityFactory) {
@@ -7,7 +7,7 @@ class WeaponSystem {
         this.eventBus = eventBus;
         this.entityManager = entityManager;
         this.entityFactory = entityFactory;
-        this.projectiles = new Map();
+        this.projectiles = new Map(); // Track active projectiles
         this.playerId = null;
     }
     
@@ -46,13 +46,13 @@ class WeaponSystem {
     }
     
     update(deltaTime) {
-        // Update all entities with weapons
+        // Process weapon states
         const weaponEntities = this.entityManager.query('weapon', 'transform');
         
         weaponEntities.forEach(entityId => {
             const weapon = this.entityManager.getComponent(entityId, 'weapon');
             
-            // Update charge time if charging
+            // Handle weapon charging mechanics
             if (weapon.charging) {
                 weapon.chargeTime = Math.min(
                     weapon.chargeTime + deltaTime * 1000,
@@ -68,13 +68,13 @@ class WeaponSystem {
                 }
             }
             
-            // Cool down weapon
+            // Apply weapon cooldown
             if (weapon.lastFireTime > 0) {
                 weapon.lastFireTime = Math.max(0, weapon.lastFireTime - deltaTime * 1000);
             }
         });
         
-        // Update projectile lifetimes
+        // Manage projectile expiration
         const projectiles = this.entityManager.getEntitiesByType('projectile');
         projectiles.forEach(projectileId => {
             const lifetime = this.entityManager.getComponent(projectileId, 'lifetime');
@@ -106,24 +106,25 @@ class WeaponSystem {
     }
     
     fireWeapon(shooterId, angle) {
+        // Validate weapon can fire
         const weapon = this.entityManager.getComponent(shooterId, 'weapon');
         const transform = this.entityManager.getComponent(shooterId, 'transform');
         const shooterEntity = this.entityManager.getEntity(shooterId);
         
         if (!weapon || !transform || !shooterEntity || weapon.lastFireTime > 0) return;
         
-        // Calculate charge level
+        // Determine charge bonus
         const chargeLevel = weapon.chargeTime / weapon.maxChargeTime;
         const isCharged = chargeLevel > 0.5;
         
-        // Calculate projectile properties
+        // Scale projectile stats by charge
         const damage = weapon.damage * (1 + chargeLevel);
         const speed = weapon.projectileSpeed * (1 + chargeLevel * 0.5);
         const size = isCharged ? 12 : 8;
         
         //console.log(`[WeaponSystem] Firing weapon: base damage ${weapon.damage}, charge ${chargeLevel}, final damage ${damage}`);
         
-        // Spawn position (in front of shooter)
+        // Calculate projectile spawn offset
         const spawnDistance = 60;
         const spawnX = transform.x + Math.cos(angle) * spawnDistance;
         const spawnY = transform.y + Math.sin(angle) * spawnDistance;
@@ -135,7 +136,7 @@ class WeaponSystem {
         
         this.projectiles.set(projectileId, true);
         
-        // Apply recoil force
+        // Simulate weapon recoil
         const recoilForce = 0.5 * (1 + chargeLevel);
         this.eventBus.emit('FORCE_APPLIED', {
             entityId: shooterId,
@@ -160,7 +161,7 @@ class WeaponSystem {
         // Play sound
         this.eventBus.emit('AUDIO_PLAY', { sound: isCharged ? 'explosion' : 'shoot' });
         
-        // Request camera shake for charged player shots
+        // Add screen shake for powerful shots
         if (isCharged && shooterId === this.playerId) {
             this.eventBus.emit('CAMERA_SHAKE', {
                 duration: 200,
