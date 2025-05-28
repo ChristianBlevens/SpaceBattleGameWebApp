@@ -6,9 +6,7 @@ class DisasterSystem {
         this.renderSystem = null;
         this.currentDisaster = null;
         this.disasterTimer = 0;
-        // FOR TESTING: Start disaster after 5 seconds
-        this.nextDisasterTime = 5000; // 5 seconds for testing
-        // this.nextDisasterTime = 120000 + Math.random() * 60000; // 2-3 minutes (normal)
+        this.nextDisasterTime = 30000 + Math.random() * 60000; // .5 to 1.5 minutes (normal)
         this.disasters = [
             'meteorShower',
             'blackHole', 
@@ -27,7 +25,7 @@ class DisasterSystem {
     }
     
     init() {
-        console.log('[DisasterSystem] Initializing...');
+        //console.log('[DisasterSystem] Initializing...');
         // Get references to other systems
         this.entityManager = this.scene.gameInitializer?.entityManager;
         this.renderSystem = this.scene.gameInitializer?.renderSystem;
@@ -37,12 +35,12 @@ class DisasterSystem {
             this.eventBus = this.scene.gameInitializer.eventBus;
         }
         
-        console.log('[DisasterSystem] Init complete. Next disaster in:', this.nextDisasterTime, 'ms');
-        console.log('[DisasterSystem] EntityManager:', !!this.entityManager);
-        console.log('[DisasterSystem] EventBus:', !!this.eventBus);
-        console.log('[DisasterSystem] Scene:', !!this.scene);
-        console.log('[DisasterSystem] Scene.sprites:', !!this.scene?.sprites);
-        console.log('[DisasterSystem] Scene.matter:', !!this.scene?.matter);
+        //console.log('[DisasterSystem] Init complete. Next disaster in:', this.nextDisasterTime, 'ms');
+        //console.log('[DisasterSystem] EntityManager:', !!this.entityManager);
+        //console.log('[DisasterSystem] EventBus:', !!this.eventBus);
+        //console.log('[DisasterSystem] Scene:', !!this.scene);
+        //console.log('[DisasterSystem] Scene.sprites:', !!this.scene?.sprites);
+        //console.log('[DisasterSystem] Scene.matter:', !!this.scene?.matter);
     }
     
     update(delta) {
@@ -50,16 +48,16 @@ class DisasterSystem {
         this.disasterTimer += delta * 1000;
         
         // Debug log every 2 seconds
-        if (Math.floor(this.disasterTimer / 2000) > Math.floor((this.disasterTimer - delta * 1000) / 2000)) {
-            console.log('[DisasterSystem] Timer:', Math.floor(this.disasterTimer / 1000), 's / Next at:', Math.floor(this.nextDisasterTime / 1000), 's');
-            console.log('[DisasterSystem] EntityManager available:', !!this.entityManager);
-            console.log('[DisasterSystem] EventBus available:', !!this.eventBus);
-        }
+        //if (Math.floor(this.disasterTimer / 2000) > Math.floor((this.disasterTimer - delta * 1000) / 2000)) {
+            //console.log('[DisasterSystem] Timer:', Math.floor(this.disasterTimer / 1000), 's / Next at:', Math.floor(this.nextDisasterTime / 1000), 's');
+            //console.log('[DisasterSystem] EntityManager available:', !!this.entityManager);
+            //console.log('[DisasterSystem] EventBus available:', !!this.eventBus);
+        //}
         
         // Check if it's time for a new disaster
         if (!this.currentDisaster && this.disasterTimer >= this.nextDisasterTime) {
-            console.log('[DisasterSystem] Starting random disaster!');
-            console.log('[DisasterSystem] Timer:', this.disasterTimer, 'NextTime:', this.nextDisasterTime);
+            //console.log('[DisasterSystem] Starting random disaster!');
+            //console.log('[DisasterSystem] Timer:', this.disasterTimer, 'NextTime:', this.nextDisasterTime);
             this.startRandomDisaster();
         }
         
@@ -83,15 +81,15 @@ class DisasterSystem {
     
     startRandomDisaster() {
         const disasterType = this.disasters[Math.floor(Math.random() * this.disasters.length)];
-        console.log('[DisasterSystem] Selected disaster type:', disasterType);
+        //console.log('[DisasterSystem] Selected disaster type:', disasterType);
         this.startDisaster(disasterType);
     }
     
     startDisaster(type) {
-        console.log('[DisasterSystem] Starting disaster:', type);
-        console.log('[DisasterSystem] Scene available:', !!this.scene);
-        console.log('[DisasterSystem] Scene.sprites available:', !!this.scene?.sprites);
-        console.log('[DisasterSystem] Scene.matter available:', !!this.scene?.matter);
+        //console.log('[DisasterSystem] Starting disaster:', type);
+        //console.log('[DisasterSystem] Scene available:', !!this.scene);
+        //console.log('[DisasterSystem] Scene.sprites available:', !!this.scene?.sprites);
+        //console.log('[DisasterSystem] Scene.matter available:', !!this.scene?.matter);
         
         this.currentDisaster = {
             type: type,
@@ -100,18 +98,18 @@ class DisasterSystem {
             data: {}
         };
         
-        console.log('[DisasterSystem] Disaster duration:', this.currentDisaster.duration);
+        //console.log('[DisasterSystem] Disaster duration:', this.currentDisaster.duration);
         
         // Notify UI
         if (this.eventBus) {
-            console.log('[DisasterSystem] Emitting disasterStart event');
+            //console.log('[DisasterSystem] Emitting disasterStart event');
             this.eventBus.emit('disasterStart', {
                 type: type,
                 name: this.getDisasterName(type),
                 duration: this.currentDisaster.duration
             });
         } else {
-            console.error('[DisasterSystem] No eventBus available!');
+            //console.error('[DisasterSystem] No eventBus available!');
         }
         
         // Initialize specific disaster
@@ -148,7 +146,7 @@ class DisasterSystem {
         
         // Debug log
         if (!this.currentDisaster.updateLogged) {
-            console.log('[DisasterSystem] updateDisaster called - type:', this.currentDisaster.type, 'delta:', delta);
+            //console.log('[DisasterSystem] updateDisaster called - type:', this.currentDisaster.type, 'delta:', delta);
             this.currentDisaster.updateLogged = true;
         }
         
@@ -241,15 +239,13 @@ class DisasterSystem {
         // Reset for next disaster
         this.currentDisaster = null;
         this.disasterTimer = 0;
-        // FOR TESTING: Quick disasters
-        this.nextDisasterTime = 30000; // 30 seconds between disasters for testing
-        // this.nextDisasterTime = 120000 + Math.random() * 60000; // 2-3 minutes (normal)
+        this.nextDisasterTime = 120000 + Math.random() * 60000; // 2-3 minutes (normal)
         this.warningActive = false;
     }
     
     // Meteor Shower - rains down meteors that damage on impact
     startMeteorShower() {
-        console.log('[DisasterSystem] Starting Meteor Shower');
+        //console.log('[DisasterSystem] Starting Meteor Shower');
         this.currentDisaster.data.nextMeteor = 0;
         this.currentDisaster.data.meteorInterval = 200; // Spawn meteor every 200ms
         this.currentDisaster.data.meteorCount = 0;
@@ -260,7 +256,7 @@ class DisasterSystem {
         
         // Debug log
         if (!this.currentDisaster.data.loggedOnce) {
-            console.log('[DisasterSystem] updateMeteorShower - delta:', delta, 'nextMeteor:', this.currentDisaster.data.nextMeteor);
+            //console.log('[DisasterSystem] updateMeteorShower - delta:', delta, 'nextMeteor:', this.currentDisaster.data.nextMeteor);
             this.currentDisaster.data.loggedOnce = true;
         }
         
@@ -272,7 +268,7 @@ class DisasterSystem {
     
     spawnMeteor() {
         this.currentDisaster.data.meteorCount++;
-        console.log('[DisasterSystem] Spawning meteor #', this.currentDisaster.data.meteorCount);
+        //console.log('[DisasterSystem] Spawning meteor #', this.currentDisaster.data.meteorCount);
         
         const startX = Math.random() * this.scene.sys.game.config.width;
         const startY = -50;
@@ -889,14 +885,14 @@ class DisasterSystem {
     }
     
     showWarning() {
-        console.log('[DisasterSystem] Showing disaster warning');
+        //console.log('[DisasterSystem] Showing disaster warning');
         if (this.eventBus) {
             this.eventBus.emit('disasterWarning', {
                 message: 'Disaster Incoming!',
                 time: this.warningTime
             });
         } else {
-            console.error('[DisasterSystem] No eventBus for warning!');
+            //console.error('[DisasterSystem] No eventBus for warning!');
         }
     }
     
