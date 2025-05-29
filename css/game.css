@@ -554,6 +554,11 @@ body:not(.game-active) {
     cursor: default;
 }
 
+/* Hide UI overlay when not in game */
+body:not(.game-active) #ui-overlay {
+    display: none;
+}
+
 /* Canvas cursor - crosshair for aiming in game, default otherwise */
 body.game-active #game-container canvas {
     cursor: crosshair !important;

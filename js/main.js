@@ -214,7 +214,7 @@ const GameConfig = {
     // Enemy faction definitions
     factions: {
         swarm: {
-            color: 0xff69b4,     // Hot pink
+            color: 0xff69b4,     // Hot pink (matches texture)
             behavior: 'aggressive',
             speed: 8.0,          // Fast, weak units
             health: 10,

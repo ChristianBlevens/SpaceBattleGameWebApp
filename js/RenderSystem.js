@@ -8,6 +8,9 @@ class RenderSystem {
         this.entityManager = entityManager;
         this.playerId = null;
         
+        // Texture generator
+        this.textureGenerator = null;
+        
         // Camera settings
         this.cameraZoom = 0.4;
         this.targetZoom = 0.4;
@@ -34,9 +37,12 @@ class RenderSystem {
         // Get player ID
         this.playerId = this.scene.gameState ? this.scene.gameState.getPlayerId() : null;
         
+        // Initialize texture generator
+        this.textureGenerator = new TextureGenerator(this.scene);
+        this.textureGenerator.init();
+        
         this.setupCamera();
         this.setupEventListeners();
-        this.createTextures();
         
         // Create marker graphics layer
         this.markerGraphics = this.scene.add.graphics();
@@ -285,6 +291,18 @@ class RenderSystem {
                 messageType: data.victory ? 'victory' : 'game-over',
                 duration: 0 // Don't auto-dismiss
             });
+        });
+        
+        // Entity creation events
+        this.eventBus.on('ENTITY_CREATED', (data) => {
+            const { entityId, entityType, variant } = data;
+            
+            // Skip if no sprite component
+            const sprite = this.scene.sprites.get(entityId);
+            if (!sprite) return;
+            
+            // Assign appropriate texture
+            this.assignEntityTexture(entityId, entityType, variant);
         });
         
         // Entity destruction
@@ -1045,14 +1063,14 @@ class RenderSystem {
         const shield = this.scene.add.sprite(transform.x, transform.y, 'shockwave');
         shield.setScale(0.8);
         shield.setTint(0x00ffff);
-        shield.setAlpha(0.5);
+        shield.setAlpha(0.25); // Reduced from 0.5 to 0.25
         shield.setBlendMode(Phaser.BlendModes.ADD);
         
         // Pulsing animation
         this.scene.tweens.add({
             targets: shield,
             scale: { from: 0.8, to: 1 },
-            alpha: { from: 0.5, to: 0.3 },
+            alpha: { from: 0.25, to: 0.15 }, // Reduced from 0.5-0.3 to 0.25-0.15
             duration: 1000,
             yoyo: true,
             repeat: -1
@@ -1384,154 +1402,90 @@ class RenderSystem {
         });
     }
     
-    // ===== TEXTURE CREATION =====
+    // ===== TEXTURE ASSIGNMENT =====
     
-    createTextures() {
-        const scene = this.scene;
-        const graphics = scene.make.graphics({ add: false });
+    assignEntityTexture(entityId, entityType, variant = null) {
+        const sprite = this.scene.sprites.get(entityId);
+        if (!sprite) return;
         
-        // Player
-        this.createGlowTexture(graphics, 'player', 40, 0x00ffff, 0x0066ff);
-        
-        // Enemies
-        this.createGlowTexture(graphics, 'enemy-swarm', 25, 0xff6666, 0xcc0000);
-        this.createGlowTexture(graphics, 'enemy-sentinel', 35, 0x66ff66, 0x00cc00);
-        this.createGlowTexture(graphics, 'enemy-phantom', 30, 0x9966ff, 0x6600cc);
-        this.createGlowTexture(graphics, 'enemy-titan', 50, 0xff9966, 0xcc6600);
-        
-        // Projectiles
-        this.createProjectileTexture(graphics, 'projectile-basic', 8, 0xffff00);
-        this.createProjectileTexture(graphics, 'projectile-charged', 12, 0x00ffff);
-        this.createProjectileTexture(graphics, 'projectile-enemy', 6, 0xff0000);
-        
-        // Powerups
-        this.createPowerupTexture(graphics, 'powerup-health', 0xff0000);
-        this.createPowerupTexture(graphics, 'powerup-energy', 0xffff00);
-        this.createPowerupTexture(graphics, 'powerup-credits', 0x00ff00);
-        
-        // Planets
-        this.createPlanetTexture(graphics, 'planet-small', 80, 0x666666);
-        this.createPlanetTexture(graphics, 'planet-medium', 120, 0x888888);
-        this.createPlanetTexture(graphics, 'planet-large', 160, 0xaaaaaa);
-        
-        // Effects
-        this.createCircleTexture(graphics, 'particle', 4, 0xffffff);
-        this.createCircleTexture(graphics, 'shockwave', 100, 0x00ffff, 0.3);
-        
-        graphics.destroy();
-    }
-    
-    createGlowTexture(graphics, key, radius, color, glowColor) {
-        graphics.clear();
-        
-        // Outer glow
-        for (let i = 3; i >= 0; i--) {
-            const alpha = 0.1 * (4 - i);
-            const r = radius + (i * 10);
-            graphics.fillStyle(glowColor || color, alpha);
-            graphics.fillCircle(radius + 30, radius + 30, r);
-        }
-        
-        // Main body
-        graphics.fillStyle(color, 1);
-        graphics.fillCircle(radius + 30, radius + 30, radius);
-        
-        // Inner highlight
-        graphics.fillStyle(0xffffff, 0.3);
-        graphics.fillCircle(radius + 20, radius + 20, radius * 0.4);
-        
-        graphics.generateTexture(key, (radius + 30) * 2, (radius + 30) * 2);
-    }
-    
-    createProjectileTexture(graphics, key, radius, color) {
-        graphics.clear();
-        
-        // Glow
-        graphics.fillStyle(color, 0.3);
-        graphics.fillCircle(radius + 10, radius + 10, radius + 5);
-        
-        // Core
-        graphics.fillStyle(color, 1);
-        graphics.fillCircle(radius + 10, radius + 10, radius);
-        
-        // Bright center
-        graphics.fillStyle(0xffffff, 0.8);
-        graphics.fillCircle(radius + 10, radius + 10, radius * 0.5);
-        
-        graphics.generateTexture(key, (radius + 10) * 2, (radius + 10) * 2);
-    }
-    
-    createPowerupTexture(graphics, key, color) {
-        graphics.clear();
-        
-        const size = 30;
-        const cx = size;
-        const cy = size;
-        
-        // Background
-        graphics.fillStyle(color, 0.3);
-        graphics.fillRect(cx - size/2, cy - size/2, size, size);
-        
-        // Star shape
-        graphics.fillStyle(color, 1);
-        graphics.beginPath();
-        
-        for (let i = 0; i < 10; i++) {
-            const angle = (Math.PI * 2 * i) / 10;
-            const radius = i % 2 === 0 ? size * 0.6 : size * 0.3;
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
+        const textureKey = this.textureGenerator.getTextureConfig(entityType, variant);
+        if (textureKey && this.scene.textures.exists(textureKey)) {
+            sprite.setTexture(textureKey);
             
-            if (i === 0) {
-                graphics.moveTo(x, y);
-            } else {
-                graphics.lineTo(x, y);
-            }
+            // Apply any special visual properties based on entity type
+            this.applyEntityVisualProperties(sprite, entityType, variant);
         }
-        
-        graphics.closePath();
-        graphics.fillPath();
-        
-        graphics.generateTexture(key, size * 2, size * 2);
     }
     
-    createPlanetTexture(graphics, key, radius, color) {
-        graphics.clear();
-        
-        // Atmosphere
-        graphics.fillStyle(color, 0.1);
-        graphics.fillCircle(radius, radius, radius + 20);
-        
-        // Planet layers
-        for (let i = 0; i < 5; i++) {
-            const r = radius - (i * radius * 0.2);
-            const brightness = 0.4 + (i * 0.15);
-            graphics.fillStyle(color, brightness);
-            graphics.fillCircle(radius, radius, r);
+    applyEntityVisualProperties(sprite, entityType, variant) {
+        // Apply special effects or properties based on entity type
+        switch (entityType) {
+            case 'player':
+                if (variant === 'boost') {
+                    sprite.setBlendMode(Phaser.BlendModes.ADD);
+                } else if (variant === 'shield') {
+                    sprite.setAlpha(0.8);
+                    sprite.setBlendMode(Phaser.BlendModes.SCREEN);
+                }
+                break;
+                
+            case 'projectile':
+                sprite.setBlendMode(Phaser.BlendModes.ADD);
+                if (variant === 'charged') {
+                    // Add pulsing effect for charged projectiles
+                    this.scene.tweens.add({
+                        targets: sprite,
+                        scale: { from: 1, to: 1.2 },
+                        alpha: { from: 1, to: 0.8 },
+                        duration: 200,
+                        yoyo: true,
+                        repeat: -1
+                    });
+                }
+                break;
+                
+            case 'powerup':
+                // Floating animation for powerups
+                this.scene.tweens.add({
+                    targets: sprite,
+                    y: sprite.y - 10,
+                    duration: 1000,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
+                
+                // Rotation
+                this.scene.tweens.add({
+                    targets: sprite,
+                    rotation: Math.PI * 2,
+                    duration: 3000,
+                    repeat: -1
+                });
+                break;
+                
+            case 'boss':
+                // Boss glow effect
+                sprite.setBlendMode(Phaser.BlendModes.ADD);
+                if (variant === 'vortex') {
+                    // Rotating vortex
+                    this.scene.tweens.add({
+                        targets: sprite,
+                        rotation: Math.PI * 2,
+                        duration: 3000,
+                        repeat: -1
+                    });
+                }
+                break;
         }
-        
-        // Surface features
-        for (let i = 0; i < 8; i++) {
-            const angle = (Math.PI * 2 * i) / 8 + Math.random() * 0.5;
-            const dist = radius * (0.3 + Math.random() * 0.4);
-            const size = radius * (0.1 + Math.random() * 0.2);
-            
-            graphics.fillStyle(color, 0.7);
-            graphics.fillCircle(
-                radius + Math.cos(angle) * dist,
-                radius + Math.sin(angle) * dist,
-                size
-            );
-        }
-        
-        graphics.generateTexture(key, radius * 2, radius * 2);
     }
     
-    createCircleTexture(graphics, key, radius, color, alpha = 1) {
-        graphics.clear();
-        graphics.fillStyle(color, alpha);
-        graphics.fillCircle(radius, radius, radius);
-        graphics.generateTexture(key, radius * 2, radius * 2);
+    // Dynamic texture switching for state changes
+    updateEntityTexture(entityId, newVariant) {
+        const entity = this.entityManager.getEntity(entityId);
+        if (!entity) return;
+        
+        this.assignEntityTexture(entityId, entity.type, newVariant);
     }
     
     // ===== GRAVITY WELL RENDERING =====
@@ -1558,7 +1512,7 @@ class RenderSystem {
             // Draw concentric circles to show gravity field
             for (let i = 0; i < 8; i++) { // More circles for larger range
                 const radius = baseRadius + ((gravityRadius - baseRadius) * (i + 1) / 8);
-                const alpha = 0.08 * (1 - i / 8); // Fade out with distance
+                const alpha = 0.04 * (1 - i / 8); // Reduced from 0.08 to 0.04 (50% reduction)
                 
                 this.gravityGraphics.lineStyle(2, 0x4444ff, alpha);
                 this.gravityGraphics.strokeCircle(transform.x, transform.y, radius);
@@ -1566,7 +1520,7 @@ class RenderSystem {
             
             // Add a subtle glow effect around the planet
             const glowRadius = baseRadius * 1.2;
-            this.gravityGraphics.fillStyle(0x6666ff, 0.1);
+            this.gravityGraphics.fillStyle(0x6666ff, 0.05); // Reduced from 0.1 to 0.05 (50% reduction)
             this.gravityGraphics.fillCircle(transform.x, transform.y, glowRadius);
         });
     }

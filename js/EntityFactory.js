@@ -33,7 +33,7 @@ class EntityFactory {
         
         // Configure physics body
         const sprite = this.scene.matter.add.sprite(x, y, 'player');
-        sprite.setCircle(12); // Circular hitbox for smooth collision
+        sprite.setCircle(18); // Circular hitbox for 48px texture
         sprite.setMass(15);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
@@ -44,6 +44,11 @@ class EntityFactory {
         // Store references
         sprite.setDepth(20); // Player above most entities
         this.scene.sprites.set(playerId, sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(playerId, 'player');
+        }
         
         // Initialize visual trail effect
         this.eventBus.emit('CREATE_TRAIL', {
@@ -104,12 +109,12 @@ class EntityFactory {
         // Create sprite
         const sprite = this.scene.matter.add.sprite(x, y, `enemy-${faction}`);
         
-        // Set hitbox based on faction sprite size
+        // Set hitbox based on faction sprite size (matching new texture sizes)
         const hitboxSizes = {
-            swarm: 10,    // Increased from 6 - 24x12 sprite
-            sentinel: 14, // Increased from 12 - 28x20 sprite
-            phantom: 14,  // Increased from 12 - 32x16 sprite
-            titan: 20    // Increased from 18 - 40x32 sprite
+            swarm: 12,     // For 32px texture
+            sentinel: 16,  // For 40px texture  
+            phantom: 14,   // For 36px texture
+            titan: 22      // For 56px texture
         };
         
         const baseHitbox = hitboxSizes[faction] || 12;
@@ -129,6 +134,11 @@ class EntityFactory {
         sprite.setDepth(15); // Enemies above vortex
         this.scene.sprites.set(enemyId, sprite);
         this.scene.enemyGroup.add(sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(enemyId, 'enemy', faction);
+        }
         
         //console.log('[EntityFactory] Enemy added to groups, total enemies:', this.scene.enemyGroup.children.size);
         
@@ -167,6 +177,11 @@ class EntityFactory {
         
         sprite.setDepth(10); // Planets above vortex but below enemies
         this.scene.sprites.set(planetId, sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(planetId, 'planet', size);
+        }
         
         return planetId;
     }
@@ -226,6 +241,11 @@ class EntityFactory {
         sprite.setDepth(25); // Powerups on top
         this.scene.sprites.set(powerupId, sprite);
         this.scene.powerupGroup.add(sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(powerupId, 'powerup', type);
+        }
         
         // Emit creation event for RenderSystem to handle animations
         this.eventBus.emit('POWERUP_CREATED', {
@@ -301,6 +321,12 @@ class EntityFactory {
         this.scene.sprites.set(projectileId, sprite);
         this.scene.projectileGroup.add(sprite);
         
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            const variant = isCharged ? 'charged' : (ownerEntity && ownerEntity.type === 'enemy' ? 'enemy' : 'basic');
+            this.scene.renderSystem.assignEntityTexture(projectileId, 'projectile', variant);
+        }
+        
         return projectileId;
     }
     
@@ -331,6 +357,11 @@ class EntityFactory {
         sprite.setDepth(5); // Slightly above background
         
         this.scene.sprites.set(catastropheId, sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(catastropheId, 'vortex');
+        }
         
         // Store on scene for special rendering
         this.scene.catastropheId = catastropheId;
@@ -388,6 +419,11 @@ class EntityFactory {
         // Store references
         sprite.setDepth(30); // Boss above other entities
         this.scene.sprites.set(bossId, sprite);
+        
+        // Assign texture through RenderSystem
+        if (this.scene.renderSystem) {
+            this.scene.renderSystem.assignEntityTexture(bossId, 'boss', bossStats.name.toLowerCase());
+        }
         
         // Add boss glow/aura effect
         this.eventBus.emit('CREATE_BOSS_AURA', {

@@ -120,7 +120,14 @@ class WeaponSystem {
         // Scale projectile stats by charge
         const damage = weapon.damage * (1 + chargeLevel);
         const speed = weapon.projectileSpeed * (1 + chargeLevel * 0.5);
-        const size = isCharged ? 12 : 8;
+        
+        // Adjust size based on shooter type and charge
+        let size;
+        if (shooterEntity.type === 'enemy') {
+            size = 5; // Enemy projectiles are smaller (12px texture)
+        } else {
+            size = isCharged ? 10 : 6; // Player projectiles (24px charged, 16px basic)
+        }
         
         //console.log(`[WeaponSystem] Firing weapon: base damage ${weapon.damage}, charge ${chargeLevel}, final damage ${damage}`);
         
