@@ -1,5 +1,5 @@
-// WaveSystem.js - Enemy wave management and progression
-// Handles wave generation, enemy spawning patterns, and progression logic
+// WaveSystem.js - Complete wave management and progression system
+// Handles wave spawning, completion, and boss phase transitions
 
 class WaveSystem {
     constructor(scene, eventBus, gameState, entityFactory) {
@@ -7,149 +7,120 @@ class WaveSystem {
         this.eventBus = eventBus;
         this.gameState = gameState;
         this.entityFactory = entityFactory;
-        this.currentWave = 0;
-        this.waveConfigs = [];
-        this.spawnTimer = 0;
-        this.spawnsRemaining = 0;
-        this.nextSpawnTime = 0;
-        this.bossPhase = false;
-        this.awaitingBossDefeat = false;
         
-        // Dynamic spawn points for edge spawning
-        this.spawnPoints = [
-            // Top edge
-            { x: () => Phaser.Math.Between(1000, GameConfig.world.width - 1000), y: () => 100 },
-            // Bottom edge
-            { x: () => Phaser.Math.Between(1000, GameConfig.world.width - 1000), y: () => GameConfig.world.height - 100 },
-            // Left edge
-            { x: () => 100, y: () => Phaser.Math.Between(1000, GameConfig.world.height - 1000) },
-            // Right edge
-            { x: () => GameConfig.world.width - 100, y: () => Phaser.Math.Between(1000, GameConfig.world.height - 1000) }
-        ];
+        // Core wave state
+        this.state = {
+            currentWave: 0,
+            phase: 'IDLE', // IDLE, SPAWNING, ACTIVE, COMPLETE, BOSS_TRANSITION, BOSS_ACTIVE, POST_BOSS
+            enemiesSpawned: 0,
+            totalEnemies: 0,
+            initialEnemyCount: 0,  // Track initial count at wave start
+            enemiesAlive: 0,       // Track currently alive enemies
+            spawnQueue: [],
+            spawnTimer: 0,
+            spawnDelay: 100
+        };
+        
+        // Configuration
+        this.config = {
+            baseEnemyCount: 10,
+            waveMultiplier: 1.3,
+            spawnDelay: 100,
+            waveStartDelay: 3000,
+            bossTransitionDelay: 2000
+        };
+        
+        // World boundaries for spawning
+        this.worldBounds = {
+            width: 16000,
+            height: 12000,
+            margin: 100
+        };
     }
     
     init() {
-        // Initialize event handlers
-        this.eventBus.on('GAME_START', () => {
-            this.reset();
-        });
+        // Core event listeners
+        this.eventBus.on('GAME_START', () => this.startGame());
+        this.eventBus.on('START_WAVE', (data) => this.startWave(data.waveNumber));
+        this.eventBus.on('ENEMY_KILLED', () => this.onEnemyKilled());
+        this.eventBus.on('BOSS_DEFEATED', () => this.onBossDefeated());
+        this.eventBus.on('ABILITY_SHOP_CLOSED', () => this.onAbilityShopClosed());
         
-        // Listen for enemy deaths to check wave completion
-        this.eventBus.on('ENEMY_KILLED', () => {
-            this.checkWaveComplete();
-        });
-        
-        // Listen for boss defeat
-        this.eventBus.on('BOSS_DEFEATED', () => {
-            this.onBossDefeated();
-        });
-        
-        // Listen for continue after boss
-        this.eventBus.on('CONTINUE_TO_NEXT_WAVE', () => {
-            this.continueToNextWave();
-        });
-        
-        // Listen for enemy spawn requests
-        this.eventBus.on('SPAWN_ENEMY', (data) => {
-            this.spawnEnemy(data);
-        });
+        // Debug commands
+        this.eventBus.on('KILL_ALL_ENEMIES', () => this.killAllEnemies());
     }
     
-    reset() {
-        this.currentWave = 0;
-        this.waveConfigs = [];
-        this.spawnTimer = 0;
-        this.spawnsRemaining = 0;
-        this.nextSpawnTime = 0;
-        this.bossPhase = false;
-        this.awaitingBossDefeat = false;
+    startGame() {
+        console.log('[WaveSystem] Game started, preparing first wave');
+        this.state.currentWave = 0;
+        this.state.phase = 'IDLE';
+        
+        // Initialize wave state in game state
+        this.gameState.update('waves.current', 0);
+        this.gameState.update('waves.totalEnemies', 0);
+        this.gameState.update('waves.enemiesRemaining', 0);
+        this.gameState.update('waves.enemiesKilled', 0);
+        this.gameState.update('waves.initialEnemyCount', 0);
+        this.gameState.update('waves.phase', 'IDLE');
+        
+        // Start first wave after delay
+        this.scene.time.delayedCall(this.config.waveStartDelay, () => {
+            this.startWave(1);
+        });
     }
     
     startWave(waveNumber) {
-        this.currentWave = waveNumber;
+        console.log(`[WaveSystem] Starting wave ${waveNumber}`);
+        
+        // Update state
+        this.state.currentWave = waveNumber;
+        this.state.phase = 'SPAWNING';
+        this.state.enemiesSpawned = 0;
+        this.state.spawnTimer = 0;
         
         // Generate wave configuration
         const waveConfig = this.generateWaveConfig(waveNumber);
+        this.state.totalEnemies = waveConfig.enemies.length;
+        this.state.initialEnemyCount = waveConfig.enemies.length;  // Save initial count
+        this.state.enemiesAlive = 0;  // Reset alive count
+        this.state.spawnQueue = [...waveConfig.enemies];
         
         // Update game state
         this.gameState.update('waves.current', waveNumber);
-        this.gameState.update('waves.waveInProgress', true);
-        this.gameState.update('waves.enemiesRemaining', waveConfig.totalEnemies);
-        this.gameState.update('waves.totalEnemies', waveConfig.totalEnemies);
-        this.gameState.update('waves.spawnsRemaining', waveConfig.totalEnemies);
-        
-        //console.log('[WaveSystem] Wave started:', {
-            //waveNumber,
-            //totalEnemies: waveConfig.totalEnemies,
-            //waveInProgress: true
-        //});
-        
-        // Store wave config
-        this.waveConfigs[waveNumber] = waveConfig;
-        this.spawnsRemaining = waveConfig.totalEnemies;
-        this.nextSpawnTime = 0;
-        
-        //console.log('[WaveSystem] Wave config generated:', {
-            //wave: waveNumber,
-            //totalEnemies: waveConfig.totalEnemies,
-            //spawnsRemaining: this.spawnsRemaining,
-            //spawnDelay: waveConfig.spawnDelay,
-            //spawns: waveConfig.spawns
-        //});
-        
-        // Emit wave announcement event
-        this.eventBus.emit('WAVE_ANNOUNCED', {
-            waveNumber: waveNumber,
-            isBossWave: waveConfig.isBossWave,
-            enemyCount: waveConfig.totalEnemies
-        });
+        this.gameState.update('waves.totalEnemies', this.state.totalEnemies);
+        this.gameState.update('waves.initialEnemyCount', this.state.initialEnemyCount);
+        this.gameState.update('waves.enemiesRemaining', this.state.totalEnemies);
+        this.gameState.update('waves.enemiesKilled', 0);
+        this.gameState.update('waves.phase', 'SPAWNING');
         
         // Emit wave start event
-        this.eventBus.emit('WAVE_START', {
-            wave: waveNumber,
-            enemies: waveConfig.totalEnemies
+        this.eventBus.emit('WAVE_STARTED', {
+            waveNumber: waveNumber,
+            totalEnemies: this.state.totalEnemies
         });
         
-        // Play wave start sound
-        this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
+        console.log(`[WaveSystem] Wave ${waveNumber} config:`, {
+            totalEnemies: this.state.totalEnemies
+        });
     }
     
     generateWaveConfig(waveNumber) {
-        // Base enemy counts scaled by wave
-        const baseSwarm = 20;
-        const baseSentinel = 10;
-        const basePhantom = 10;
-        const baseTitan = 3;
+        // Calculate enemy counts with scaling
+        const totalEnemies = Math.floor(
+            this.config.baseEnemyCount * Math.pow(this.config.waveMultiplier, waveNumber - 1)
+        );
         
-        // Apply exponential scaling per wave
-        const swarmCount = Math.floor(baseSwarm * Math.pow(1.2, waveNumber - 1));
-        const sentinelCount = Math.floor(baseSentinel * Math.pow(1.15, waveNumber - 1));
-        const phantomCount = Math.floor(basePhantom * Math.pow(1.15, waveNumber - 1));
-        const titanCount = Math.floor(baseTitan * Math.pow(1.1, waveNumber - 1));
+        // Enemy type distribution
+        const distribution = this.getWaveDistribution(waveNumber);
+        const enemies = [];
         
-        const totalEnemies = swarmCount + sentinelCount + phantomCount + titanCount;
-        
-        const config = {
-            wave: waveNumber,
-            totalEnemies: totalEnemies,
-            spawns: [],
-            spawnDelay: 100, // Fast spawning for groups
-            isBossWave: waveNumber % GameConfig.waves.bossWaveInterval === 0,
-            // Store spawn patterns
-            swarmPositions: [],
-            sentinelPositions: [],
-            titanPositions: []
-        };
-        
-        // Generate tactical spawn patterns
-        
-        // Swarm formation - clustered group spawn
-        const swarmCenter = this.getRandomMapPosition();
+        // Generate swarm enemies (clustered spawning)
+        const swarmCount = Math.floor(totalEnemies * distribution.swarm);
+        const swarmCenter = this.getRandomEdgePosition();
         for (let i = 0; i < swarmCount; i++) {
-            const offset = this.getClusterOffset(i, 50); // Small spacing
-            config.spawns.push({ 
-                type: 'swarm', 
-                faction: 'swarm',
+            const offset = this.getClusterOffset(i, 50);
+            enemies.push({
+                type: 'swarm',
                 position: {
                     x: swarmCenter.x + offset.x,
                     y: swarmCenter.y + offset.y
@@ -157,158 +128,317 @@ class WaveSystem {
             });
         }
         
-        // Sentinel formation - defensive line
-        const sentinelLine = this.getLinePositions(sentinelCount, 450);
-        for (let i = 0; i < sentinelCount; i++) {
-            config.spawns.push({
+        // Generate sentinel enemies (defensive line)
+        const sentinelCount = Math.floor(totalEnemies * distribution.sentinel);
+        const sentinelPositions = this.getLineFormation(sentinelCount);
+        sentinelPositions.forEach(pos => {
+            enemies.push({
                 type: 'sentinel',
-                faction: 'sentinel',
-                position: sentinelLine[i]
+                position: pos
             });
-        }
+        });
         
-        // Phantom distribution - scattered stealth units
+        // Generate phantom enemies (scattered)
+        const phantomCount = Math.floor(totalEnemies * distribution.phantom);
         for (let i = 0; i < phantomCount; i++) {
-            config.spawns.push({
+            enemies.push({
                 type: 'phantom',
-                faction: 'phantom',
-                position: this.getRandomMapPosition()
+                position: this.getRandomEdgePosition()
             });
         }
         
-        // Titan placement - widely separated heavy units
+        // Generate titan enemies (distributed)
+        const titanCount = Math.floor(totalEnemies * distribution.titan);
         const titanPositions = this.getDistributedPositions(titanCount);
-        for (let i = 0; i < titanCount; i++) {
-            config.spawns.push({
+        titanPositions.forEach(pos => {
+            enemies.push({
                 type: 'titan',
-                faction: 'titan',
-                position: titanPositions[i]
+                position: pos
             });
-        }
+        });
         
-        // Increase enemy strength each wave
-        config.strengthMultiplier = 1 + (waveNumber - 1) * 0.1;
-        
-        return config;
+        // Shuffle spawn order for variety
+        return {
+            enemies: this.shuffleArray(enemies),
+            strengthMultiplier: 1 + (waveNumber - 1) * 0.1
+        };
     }
     
     getWaveDistribution(waveNumber) {
-        const total = Math.floor(GameConfig.waves.baseEnemyCount * Math.pow(GameConfig.waves.enemyMultiplier, waveNumber - 1));
+        // Adjust distribution based on wave progression
+        const swarmBase = 0.5;
+        const sentinelBase = 0.2;
+        const phantomBase = 0.2;
+        const titanBase = 0.1;
         
-        // Faction distribution changes with waves
-        let swarmPercent = 0.5 - (waveNumber * 0.02);
-        let sentinelPercent = 0.2 + (waveNumber * 0.01);
-        let phantomPercent = 0.2 + (waveNumber * 0.01);
-        let titanPercent = Math.min(0.1, waveNumber * 0.02);
-        
-        // Normalize
-        const totalPercent = swarmPercent + sentinelPercent + phantomPercent + titanPercent;
-        swarmPercent /= totalPercent;
-        sentinelPercent /= totalPercent;
-        phantomPercent /= totalPercent;
-        titanPercent /= totalPercent;
+        // Gradually shift distribution
+        const progression = Math.min(waveNumber / 20, 1);
         
         return {
-            swarm: Math.floor(total * swarmPercent),
-            sentinel: Math.floor(total * sentinelPercent),
-            phantom: Math.floor(total * phantomPercent),
-            titan: Math.floor(total * titanPercent)
+            swarm: swarmBase - (progression * 0.2),
+            sentinel: sentinelBase + (progression * 0.05),
+            phantom: phantomBase + (progression * 0.1),
+            titan: titanBase + (progression * 0.05)
         };
     }
     
     update(deltaTime) {
-        // Skip if no active wave
-        if (!this.gameState.get('waves.waveInProgress')) {
-            return;
-        }
+        // Convert deltaTime to milliseconds
+        const dt = deltaTime * 1000;
         
-        const waveConfig = this.waveConfigs[this.currentWave];
-        if (!waveConfig) {
-            //console.log('[WaveSystem] update: No wave config for wave', this.currentWave);
-            return;
-        }
-        
-        // Update spawn timer
-        this.spawnTimer += deltaTime * 1000;
-        
-        if (this.spawnTimer >= this.nextSpawnTime && this.spawnsRemaining > 0) {
-            // Spawn next enemy
-            const spawnInfo = waveConfig.spawns[waveConfig.totalEnemies - this.spawnsRemaining];
-            if (spawnInfo) {
-                //console.log('[WaveSystem] Spawning enemy:', spawnInfo);
-                this.spawnEnemy(spawnInfo);
-                this.spawnsRemaining--;
-                this.gameState.update('waves.spawnsRemaining', this.spawnsRemaining);
-            }
-            
-            // Set next spawn time
-            this.nextSpawnTime = this.spawnTimer + waveConfig.spawnDelay;
+        switch (this.state.phase) {
+            case 'SPAWNING':
+                this.updateSpawning(dt);
+                break;
+            case 'ACTIVE':
+                // Wave is active, waiting for enemies to be defeated
+                break;
+            case 'BOSS_TRANSITION':
+            case 'BOSS_ACTIVE':
+            case 'POST_BOSS':
+                // Boss phases handled by BossSystem
+                break;
         }
     }
     
-    spawnEnemy(spawnInfo) {
-        //console.log('[WaveSystem] spawnEnemy called with:', spawnInfo);
+    updateSpawning(dt) {
+        this.state.spawnTimer += dt;
         
-        let x, y;
-        
-        // Use predefined position if available
-        if (spawnInfo.position) {
-            x = spawnInfo.position.x;
-            y = spawnInfo.position.y;
-        } else {
-            // Fallback to random spawn point
-            const spawnPoint = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
-            x = spawnPoint.x();
-            y = spawnPoint.y();
+        // Check if it's time to spawn next enemy
+        if (this.state.spawnTimer >= this.config.spawnDelay && this.state.spawnQueue.length > 0) {
+            const enemyConfig = this.state.spawnQueue.shift();
+            this.spawnEnemy(enemyConfig);
+            this.state.enemiesSpawned++;
+            this.state.spawnTimer = 0;
+            
+            // Check if all enemies spawned
+            if (this.state.spawnQueue.length === 0) {
+                this.state.phase = 'ACTIVE';
+                this.gameState.update('waves.phase', 'ACTIVE');
+                console.log('[WaveSystem] All enemies spawned, wave is now active');
+            }
         }
-        
-        // Ensure position is within bounds
-        x = Math.max(100, Math.min(GameConfig.world.width - 100, x));
-        y = Math.max(100, Math.min(GameConfig.world.height - 100, y));
-        
-        //console.log('[WaveSystem] Spawn position:', { x, y });
-        
-        // Get faction config
-        const factionConfig = GameConfig.factions[spawnInfo.faction];
-        if (!factionConfig) {
-            console.error('[WaveSystem] No faction config for:', spawnInfo.faction);
-            return;
-        }
+    }
+    
+    spawnEnemy(config) {
+        const { type, position } = config;
         
         // Calculate initial velocity toward center
-        const centerX = GameConfig.world.centerX;
-        const centerY = GameConfig.world.centerY;
-        const angle = Math.atan2(centerY - y, centerX - x);
-        const speed = factionConfig.speed * 0.5;
+        const centerX = this.worldBounds.width / 2;
+        const centerY = this.worldBounds.height / 2;
+        const angle = Math.atan2(centerY - position.y, centerX - position.x);
+        const speed = 5;
         
-        const initialVelocity = {
+        const velocity = {
             x: Math.cos(angle) * speed,
             y: Math.sin(angle) * speed
         };
         
-        //console.log('[WaveSystem] Creating enemy with velocity:', initialVelocity);
+        // Get strength multiplier for current wave
+        const strengthMultiplier = 1 + (this.state.currentWave - 1) * 0.1;
         
-        // Create enemy using factory with strength multiplier
-        const waveConfig = this.waveConfigs[this.currentWave];
-        const strengthMultiplier = waveConfig ? waveConfig.strengthMultiplier : 1;
-        
+        // Create enemy through factory
         const enemyId = this.entityFactory.createEnemy(
-            spawnInfo.faction, 
-            x, 
-            y, 
-            initialVelocity,
-            strengthMultiplier,
-            spawnInfo.isNecromancerMinion // Pass necromancer minion flag
+            type,
+            position.x,
+            position.y,
+            velocity,
+            strengthMultiplier
         );
         
-        //console.log('[WaveSystem] Enemy created with ID:', enemyId);
+        // Increment alive count
+        this.state.enemiesAlive++;
+        this.updateEnemyCounts();
         
-        // Emit spawn event for other systems
+        // Emit spawn event
         this.eventBus.emit('ENEMY_SPAWNED', {
-            entityId: enemyId,
-            faction: spawnInfo.faction,
-            position: { x, y }
+            id: enemyId,
+            type: type,
+            faction: type, // faction and type are the same for enemies
+            position: position,
+            wave: this.state.currentWave
         });
+    }
+    
+    onEnemyKilled() {
+        // Decrement alive count
+        if (this.state.enemiesAlive > 0) {
+            this.state.enemiesAlive--;
+            this.updateEnemyCounts();
+            
+            console.log(`[WaveSystem] Enemy killed, ${this.state.enemiesAlive} alive`);
+            
+            // Check wave completion
+            if (this.state.enemiesAlive === 0 && this.state.phase === 'ACTIVE') {
+                this.onWaveComplete();
+            }
+        }
+    }
+    
+    updateEnemyCounts() {
+        // Calculate killed count from initial count - alive count
+        const killed = this.state.initialEnemyCount - this.state.enemiesAlive;
+        
+        // Update game state with accurate counts
+        this.gameState.update('waves.enemiesRemaining', this.state.enemiesAlive);
+        this.gameState.update('waves.enemiesKilled', killed);
+    }
+    
+    onWaveComplete() {
+        console.log(`[WaveSystem] Wave ${this.state.currentWave} completed!`);
+        this.state.phase = 'COMPLETE';
+        this.gameState.update('waves.phase', 'COMPLETE');
+        
+        // Emit wave complete event
+        this.eventBus.emit('WAVE_COMPLETED', {
+            waveNumber: this.state.currentWave
+        });
+        
+        // Always transition to boss phase after every wave
+        this.scene.time.delayedCall(this.config.bossTransitionDelay, () => {
+            this.startBossTransition();
+        });
+    }
+    
+    startBossTransition() {
+        console.log('[WaveSystem] Starting boss transition');
+        this.state.phase = 'BOSS_TRANSITION';
+        this.gameState.update('waves.phase', 'BOSS_TRANSITION');
+        
+        // Clear remaining enemies
+        this.clearAllEnemies();
+        
+        // Notify boss system
+        this.eventBus.emit('START_BOSS_PHASE', {
+            waveNumber: this.state.currentWave
+        });
+        
+        // Update phase after boss spawns
+        this.scene.time.delayedCall(500, () => {
+            this.state.phase = 'BOSS_ACTIVE';
+            this.gameState.update('waves.phase', 'BOSS_ACTIVE');
+        });
+    }
+    
+    onBossDefeated() {
+        console.log('[WaveSystem] Boss defeated');
+        this.state.phase = 'POST_BOSS';
+        this.gameState.update('waves.phase', 'POST_BOSS');
+        
+        // Ability shop will open automatically via BossSystem events
+    }
+    
+    onAbilityShopClosed() {
+        console.log('[WaveSystem] Ability shop closed, starting next wave');
+        
+        // Start next wave
+        this.scene.time.delayedCall(this.config.waveStartDelay, () => {
+            this.startWave(this.state.currentWave + 1);
+        });
+    }
+    
+    clearAllEnemies() {
+        console.log('[WaveSystem] Clearing all enemies');
+        
+        // Get all enemy entities
+        const enemies = this.entityFactory.entityManager.getEntitiesByType('enemy');
+        let cleared = 0;
+        
+        enemies.forEach(enemyId => {
+            // Skip boss minions if needed
+            const ai = this.entityFactory.entityManager.getComponent(enemyId, 'ai');
+            if (ai && ai.isBossMinion) {
+                return;
+            }
+            
+            // Destroy enemy without rewards
+            this.entityFactory.entityManager.destroyEntity(enemyId);
+            cleared++;
+        });
+        
+        console.log(`[WaveSystem] Cleared ${cleared} enemies`);
+        this.state.enemiesAlive = 0;
+        this.updateEnemyCounts();
+    }
+    
+    
+    // Helper methods for spawn positions
+    getRandomEdgePosition() {
+        const edge = Math.floor(Math.random() * 4);
+        const { width, height, margin } = this.worldBounds;
+        
+        switch (edge) {
+            case 0: // Top
+                return { x: Math.random() * width, y: margin };
+            case 1: // Right
+                return { x: width - margin, y: Math.random() * height };
+            case 2: // Bottom
+                return { x: Math.random() * width, y: height - margin };
+            case 3: // Left
+                return { x: margin, y: Math.random() * height };
+        }
+    }
+    
+    getClusterOffset(index, spacing) {
+        const angle = (index / 6) * Math.PI * 2;
+        const radius = Math.floor(index / 6) * spacing;
+        return {
+            x: Math.cos(angle) * radius,
+            y: Math.sin(angle) * radius
+        };
+    }
+    
+    getLineFormation(count) {
+        const positions = [];
+        const edge = Math.floor(Math.random() * 4);
+        const spacing = 150;
+        
+        for (let i = 0; i < count; i++) {
+            const offset = (i - count / 2) * spacing;
+            let x, y;
+            
+            switch (edge) {
+                case 0: // Top
+                    x = this.worldBounds.width / 2 + offset;
+                    y = this.worldBounds.margin;
+                    break;
+                case 1: // Right
+                    x = this.worldBounds.width - this.worldBounds.margin;
+                    y = this.worldBounds.height / 2 + offset;
+                    break;
+                case 2: // Bottom
+                    x = this.worldBounds.width / 2 + offset;
+                    y = this.worldBounds.height - this.worldBounds.margin;
+                    break;
+                case 3: // Left
+                    x = this.worldBounds.margin;
+                    y = this.worldBounds.height / 2 + offset;
+                    break;
+            }
+            
+            positions.push({ x, y });
+        }
+        
+        return positions;
+    }
+    
+    getDistributedPositions(count) {
+        const positions = [];
+        const sections = Math.ceil(Math.sqrt(count));
+        const sectionWidth = this.worldBounds.width / sections;
+        const sectionHeight = this.worldBounds.height / sections;
+        
+        for (let i = 0; i < count; i++) {
+            const sx = i % sections;
+            const sy = Math.floor(i / sections);
+            
+            positions.push({
+                x: (sx + 0.5) * sectionWidth + (Math.random() - 0.5) * sectionWidth * 0.5,
+                y: (sy + 0.5) * sectionHeight + (Math.random() - 0.5) * sectionHeight * 0.5
+            });
+        }
+        
+        return positions;
     }
     
     shuffleArray(array) {
@@ -320,184 +450,31 @@ class WaveSystem {
         return shuffled;
     }
     
-    checkWaveComplete() {
-        const enemiesRemaining = this.gameState.get('waves.enemiesRemaining');
-        const waveInProgress = this.gameState.get('waves.waveInProgress');
-        
-        //console.log('[WaveSystem] Checking wave complete:', {
-            //enemiesRemaining,
-            //waveInProgress,
-            //spawnsRemaining: this.spawnsRemaining
-        //});
-        
-        if (waveInProgress && enemiesRemaining <= 0 && this.spawnsRemaining <= 0) {
-            // Wave complete!
-            const waveNumber = this.currentWave;
-            const waveConfig = this.waveConfigs[waveNumber];
-            
-            // Update state
-            this.gameState.update('waves.waveInProgress', false);
-            
-            // Don't give rewards here - CombatSystem handles wave rewards
-            // Just emit the wave complete event
-            this.eventBus.emit('WAVE_COMPLETE', {
-                waveNumber: waveNumber,
-                isBossWave: waveConfig.isBossWave
+    
+    killAllEnemies() {
+        console.log('[WaveSystem] Debug: Killing all enemies');
+        const enemies = this.entityFactory.entityManager.getEntitiesByType('enemy');
+        const playerId = this.gameState.getPlayerId();
+        enemies.forEach(enemyId => {
+            // Use the CombatSystem's damage handling
+            this.eventBus.emit('DAMAGE_ENTITY', {
+                entityId: enemyId,
+                damage: 99999,
+                sourceId: playerId  // Set player as source so kills are properly credited
             });
-            
-            // Play victory sound
-            this.eventBus.emit('AUDIO_PLAY', { sound: 'powerup' });
-            
-            // Start boss phase after delay
-            this.scene.time.delayedCall(3000, () => {
-                this.startBossPhase();
-            });
-        }
+        });
     }
     
-    getCurrentWaveInfo() {
-        const waveConfig = this.waveConfigs[this.currentWave];
-        if (!waveConfig) return null;
-        
+    getDebugInfo() {
         return {
-            waveNumber: this.currentWave,
-            totalEnemies: waveConfig.totalEnemies,
+            currentWave: this.state.currentWave,
+            phase: this.state.phase,
+            initialEnemyCount: this.state.initialEnemyCount,
+            enemiesAlive: this.state.enemiesAlive,
+            enemiesKilled: this.state.initialEnemyCount - this.state.enemiesAlive,
             enemiesRemaining: this.gameState.get('waves.enemiesRemaining'),
-            spawnsRemaining: this.spawnsRemaining,
-            isBossWave: waveConfig.isBossWave,
-            inProgress: this.gameState.get('waves.waveInProgress')
+            spawnQueue: this.state.spawnQueue.length
         };
-    }
-    
-    // Helper methods for spawn positioning
-    getRandomMapPosition() {
-        const margin = 200;
-        return {
-            x: Phaser.Math.Between(margin, GameConfig.world.width - margin),
-            y: Phaser.Math.Between(margin, GameConfig.world.height - margin)
-        };
-    }
-    
-    getClusterOffset(index, spacing) {
-        // Generate hexagonal formation positions
-        const ring = Math.floor((Math.sqrt(1 + 8 * index) - 1) / 2);
-        const indexInRing = index - (ring * (ring + 1)) / 2;
-        const angle = (indexInRing / Math.max(1, ring * 6)) * Math.PI * 2;
-        
-        return {
-            x: Math.cos(angle) * ring * spacing,
-            y: Math.sin(angle) * ring * spacing
-        };
-    }
-    
-    getLinePositions(count, spacing) {
-        // Create linear formation along map edge
-        const positions = [];
-        const edge = Math.floor(Math.random() * 4);
-        
-        const margin = 200;
-        const totalLength = (count - 1) * spacing;
-        
-        for (let i = 0; i < count; i++) {
-            let x, y;
-            const offset = i * spacing - totalLength / 2;
-            
-            switch (edge) {
-                case 0: // Top edge
-                    x = GameConfig.world.centerX + offset;
-                    y = margin;
-                    break;
-                case 1: // Right edge
-                    x = GameConfig.world.width - margin;
-                    y = GameConfig.world.centerY + offset;
-                    break;
-                case 2: // Bottom edge
-                    x = GameConfig.world.centerX + offset;
-                    y = GameConfig.world.height - margin;
-                    break;
-                case 3: // Left edge
-                    x = margin;
-                    y = GameConfig.world.centerY + offset;
-                    break;
-            }
-            
-            positions.push({ x, y });
-        }
-        
-        return positions;
-    }
-    
-    getDistributedPositions(count) {
-        // Distribute entities across map sectors
-        const positions = [];
-        const sections = [];
-        
-        // Create grid-based sectors
-        const sectionWidth = GameConfig.world.width / Math.ceil(Math.sqrt(count));
-        const sectionHeight = GameConfig.world.height / Math.ceil(Math.sqrt(count));
-        
-        // Create all possible sections
-        for (let x = 0; x < Math.ceil(Math.sqrt(count)); x++) {
-            for (let y = 0; y < Math.ceil(Math.sqrt(count)); y++) {
-                sections.push({
-                    x: x * sectionWidth + sectionWidth / 2,
-                    y: y * sectionHeight + sectionHeight / 2
-                });
-            }
-        }
-        
-        // Shuffle sections and pick positions
-        const shuffledSections = this.shuffleArray(sections);
-        for (let i = 0; i < count && i < shuffledSections.length; i++) {
-            const section = shuffledSections[i];
-            positions.push({
-                x: section.x + Phaser.Math.Between(-sectionWidth/4, sectionWidth/4),
-                y: section.y + Phaser.Math.Between(-sectionHeight/4, sectionHeight/4)
-            });
-        }
-        
-        return positions;
-    }
-    
-    startBossPhase() {
-        this.bossPhase = true;
-        this.awaitingBossDefeat = true;
-        this.gameState.update('waves.bossPhase', true);
-        
-        // Announce boss phase
-        this.eventBus.emit('BOSS_PHASE_ANNOUNCEMENT', {
-            waveNumber: this.currentWave
-        });
-        
-        // Start boss phase after announcement
-        this.scene.time.delayedCall(2000, () => {
-            this.eventBus.emit('START_BOSS_PHASE', {
-                waveNumber: this.currentWave
-            });
-        });
-    }
-    
-    onBossDefeated() {
-        if (!this.awaitingBossDefeat) return;
-        
-        this.bossPhase = false;
-        this.awaitingBossDefeat = false;
-        this.gameState.update('waves.bossPhase', false);
-        
-        // Boss defeated announcement will be handled by BossSystem
-    }
-    
-    continueToNextWave() {
-        const nextWave = this.currentWave + 1;
-        
-        if (nextWave <= 20) { // Campaign length
-            this.scene.time.delayedCall(3000, () => {
-                this.startWave(nextWave);
-            });
-        } else {
-            // Victory condition reached
-            this.eventBus.emit('GAME_VICTORY');
-        }
     }
 }
 

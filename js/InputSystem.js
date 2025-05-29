@@ -127,6 +127,7 @@ class InputSystem {
         this.keys.ability4.on('down', () => {
             this.eventBus.emit('USE_ABILITY', { slot: 3 });
         });
+        
     }
     
     isShiftHeld() {

@@ -337,7 +337,10 @@ class AbilityShopSystem {
         this.shopOpen = false;
         this.gameState.update('game.paused', false);
         
-        // Continue to next wave
+        // Emit shop closed event for WaveSystem
+        this.eventBus.emit('ABILITY_SHOP_CLOSED');
+        
+        // Legacy event for compatibility
         this.eventBus.emit('CONTINUE_TO_NEXT_WAVE');
     }
     

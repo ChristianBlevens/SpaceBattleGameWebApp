@@ -20,6 +20,7 @@ document.addEventListener('alpine:init', () => {
         activeMission: null,
         currentWave: 0,
         waveInProgress: false,
+        wavePhase: 'IDLE',
         enemiesDefeated: 0,
         totalEnemies: 0,
         
@@ -145,6 +146,7 @@ document.addEventListener('alpine:init', () => {
                 if (state.mission) {
                     this.currentWave = state.mission.currentWave || 0;
                     this.waveInProgress = state.mission.waveInProgress || false;
+                    this.wavePhase = state.mission.phase || 'IDLE';
                     this.enemiesDefeated = state.mission.enemiesDefeated || 0;
                     this.totalEnemies = state.mission.totalEnemies || 0;
                 }

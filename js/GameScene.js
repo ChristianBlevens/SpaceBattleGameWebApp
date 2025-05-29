@@ -297,8 +297,10 @@ class GameScene extends Phaser.Scene {
                     mission: {
                         currentWave: gameState.get('waves.current'),
                         waveInProgress: waveInProgress,
-                        enemiesDefeated: gameState.get('waves.totalEnemies') - gameState.get('waves.enemiesRemaining'),
-                        totalEnemies: gameState.get('waves.totalEnemies')
+                        phase: gameState.get('waves.phase'),
+                        enemiesDefeated: gameState.get('waves.enemiesKilled') || 0,
+                        totalEnemies: gameState.get('waves.initialEnemyCount') || 0,
+                        enemiesRemaining: gameState.get('waves.enemiesRemaining') || 0
                     },
                     upgrades: abilitySystem.getAllUpgradeInfo()
                 };

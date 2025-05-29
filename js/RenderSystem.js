@@ -128,10 +128,19 @@ class RenderSystem {
         
         // Entity lifecycle events
         this.eventBus.on('ENEMY_SPAWNED', (data) => {
+            // Define faction colors inline to avoid dependency issues
+            const factionColors = {
+                swarm: 0xff69b4,     // Hot pink
+                sentinel: 0x66ff66,  // Green
+                phantom: 0x9966ff,   // Purple
+                titan: 0xff9966      // Orange
+            };
+            
+            const color = factionColors[data.faction] || 0xffffff;
             this.createSpawnEffect(
                 data.position.x,
                 data.position.y,
-                GameConfig.factions[data.faction].color
+                color
             );
         });
         

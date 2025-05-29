@@ -34,6 +34,11 @@ class CombatSystem {
         this.eventBus.on('COMBAT_ENEMY_DEATH', (data) => {
             this.handleEnemyDeath(data.entityId, data.transform);
         });
+        
+        // Listen for direct damage events (e.g., from debug commands)
+        this.eventBus.on('DAMAGE_ENTITY', (data) => {
+            this.applyDamage(data.entityId, data.damage, data.sourceId);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -307,10 +312,6 @@ class CombatSystem {
         const totalKills = this.gameState.get('game.totalKills') + 1;
         this.gameState.update('game.totalKills', totalKills);
         
-        const remaining = this.gameState.get('waves.enemiesRemaining') - 1;
-        //console.log('[CombatSystem] Enemies remaining after death:', remaining);
-        this.gameState.update('waves.enemiesRemaining', remaining);
-        
         // Emit events for other systems
         this.eventBus.emit('ENEMY_KILLED', {
             entityId: enemyId,
@@ -331,13 +332,8 @@ class CombatSystem {
             });
         }
         
-        // Check wave completion
-        const spawnsRemaining = this.gameState.get('waves.spawnsRemaining');
-        //console.log('[CombatSystem] Wave check - Enemies:', remaining, 'Spawns:', spawnsRemaining);
-        if (remaining <= 0 && spawnsRemaining <= 0) {
-            //console.log('[CombatSystem] Wave complete! Emitting WAVE_COMPLETE event');
-            this.eventBus.emit('WAVE_COMPLETE');
-        }
+        // The WaveSystem will handle wave completion detection
+        // Just emit the enemy killed event and let WaveSystem check if wave is complete
         
         // Destroy the entity
         this.eventBus.emit('DESTROY_ENTITY', {
