@@ -209,7 +209,18 @@ class TextureGenerator {
     // ===== ENVIRONMENT TEXTURES =====
     
     generateEnvironmentTextures() {
-        // Planets with detailed surfaces
+        // Generate textures for all planet profiles
+        for (const [type, profile] of Object.entries(PLANET_PROFILES)) {
+            this.createPlanetTexture(`planet-${type}`, {
+                radius: profile.spriteRadius,
+                baseColor: profile.baseColor,
+                surfaceType: profile.surfaceType,
+                atmosphere: profile.atmosphere,
+                atmosphereOpacity: profile.atmosphereOpacity || 0.3
+            });
+        }
+        
+        // Keep legacy planet textures for compatibility
         this.createPlanetTexture('planet-small', {
             radius: 80,
             baseColor: 0x666666,
@@ -636,7 +647,7 @@ class TextureGenerator {
     // ===== PLANET TEXTURE CREATION =====
     
     createPlanetTexture(key, config) {
-        const { radius, baseColor, surfaceType, atmosphere } = config;
+        const { radius, baseColor, surfaceType, atmosphere, atmosphereOpacity = 0.3 } = config;
         const totalSize = radius * 2 + 80; // Extra space for atmosphere
         
         this.canvas.width = totalSize;
@@ -648,7 +659,7 @@ class TextureGenerator {
         
         // Atmosphere glow
         const atmosphereGradient = this.ctx.createRadialGradient(cx, cy, radius, cx, cy, radius + 40);
-        atmosphereGradient.addColorStop(0, this.hexToRgba(atmosphere, 0.3));
+        atmosphereGradient.addColorStop(0, this.hexToRgba(atmosphere, atmosphereOpacity));
         atmosphereGradient.addColorStop(1, this.hexToRgba(atmosphere, 0));
         this.ctx.fillStyle = atmosphereGradient;
         this.ctx.beginPath();

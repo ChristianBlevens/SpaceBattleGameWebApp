@@ -73,35 +73,35 @@ class UpgradeSystem {
         
         switch (upgradeType) {
             case 'damage':
-                // Increase weapon damage
+                // Increase weapon damage - 5% per level (was 25%)
                 const weapon = this.entityManager.getComponent(playerId, 'weapon');
                 if (weapon) {
-                    weapon.damage = weapon.damage * 1.2;
-                    weapon.maxChargeTime = weapon.maxChargeTime * 0.9; // Faster charging
+                    weapon.damage = weapon.damage * 1.05;
+                    weapon.maxChargeTime = weapon.maxChargeTime * 0.99; // Tiny charge speed increase
                 }
                 
                 // Update player stats
                 const currentDamage = this.gameState.get('player.stats.damage') || GameConfig.player.baseDamage;
-                this.gameState.update('player.stats.damage', currentDamage * 1.2);
+                this.gameState.update('player.stats.damage', currentDamage * 1.05);
                 break;
                 
             case 'speed':
-                // Increase movement speed
+                // Increase movement speed - 4% per level (was 20%)
                 const physics = this.entityManager.getComponent(playerId, 'physics');
                 if (physics) {
-                    physics.maxSpeed = physics.maxSpeed * 1.15;
+                    physics.maxSpeed = physics.maxSpeed * 1.04;
                 }
                 
                 // Update player stats
                 const currentSpeed = this.gameState.get('player.stats.speed') || GameConfig.player.baseSpeed;
-                this.gameState.update('player.stats.speed', currentSpeed * 1.15);
+                this.gameState.update('player.stats.speed', currentSpeed * 1.04);
                 break;
                 
             case 'defense':
-                // Increase health and defense
+                // Increase health and defense - 10 HP per level (was 30)
                 const health = this.entityManager.getComponent(playerId, 'health');
                 if (health) {
-                    const increase = 20;
+                    const increase = 10;
                     health.max += increase;
                     health.current += increase;
                     
@@ -110,21 +110,21 @@ class UpgradeSystem {
                     this.gameState.update('player.health', health.current);
                 }
                 
-                // Update player stats
+                // Update player stats - 3% damage reduction (was 15%)
                 const currentDefense = this.gameState.get('player.stats.defense') || GameConfig.player.baseDefense;
-                this.gameState.update('player.stats.defense', currentDefense * 1.1);
+                this.gameState.update('player.stats.defense', currentDefense * 1.03);
                 break;
                 
             case 'energy':
-                // Increase energy capacity and regen
+                // Increase energy capacity and regen - 10 energy per level (was 30)
                 const currentMaxEnergy = this.gameState.get('player.maxEnergy');
-                const newMaxEnergy = currentMaxEnergy + 20;
+                const newMaxEnergy = currentMaxEnergy + 10;
                 this.gameState.update('player.maxEnergy', newMaxEnergy);
-                this.gameState.update('player.energy', this.gameState.get('player.energy') + 20);
+                this.gameState.update('player.energy', this.gameState.get('player.energy') + 10);
                 
-                // Increase energy regen
+                // Increase energy regen - 5% per level (was 25%)
                 const currentRegen = this.gameState.get('player.stats.energyRegen') || GameConfig.player.energyRegen;
-                this.gameState.update('player.stats.energyRegen', currentRegen * 1.2);
+                this.gameState.update('player.stats.energyRegen', currentRegen * 1.05);
                 break;
         }
     }

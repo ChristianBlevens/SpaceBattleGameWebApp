@@ -106,25 +106,24 @@ class GameScene extends Phaser.Scene {
         
         // Create orbital systems
         const orbitalSystems = [
-            { x: GameConfig.world.centerX, y: GameConfig.world.centerY, planets: 5, size: 'large' },
-            { x: GameConfig.world.width * 0.25, y: GameConfig.world.height * 0.25, planets: 3, size: 'medium' },
-            { x: GameConfig.world.width * 0.75, y: GameConfig.world.height * 0.25, planets: 3, size: 'medium' },
-            { x: GameConfig.world.width * 0.25, y: GameConfig.world.height * 0.75, planets: 3, size: 'medium' },
-            { x: GameConfig.world.width * 0.75, y: GameConfig.world.height * 0.75, planets: 3, size: 'medium' }
+            { x: GameConfig.world.centerX, y: GameConfig.world.centerY, planets: 5, type: 'jupiter' },
+            { x: GameConfig.world.width * 0.25, y: GameConfig.world.height * 0.25, planets: 3, type: 'earth' },
+            { x: GameConfig.world.width * 0.75, y: GameConfig.world.height * 0.25, planets: 3, type: 'saturn' },
+            { x: GameConfig.world.width * 0.25, y: GameConfig.world.height * 0.75, planets: 3, type: 'toxic' },
+            { x: GameConfig.world.width * 0.75, y: GameConfig.world.height * 0.75, planets: 3, type: 'neptune' }
         ];
         
         orbitalSystems.forEach(system => {
-            entityFactory.createOrbitalSystem(system.x, system.y, system.planets, system.size);
+            entityFactory.createOrbitalSystem(system.x, system.y, system.planets, system.type);
         });
         
-        // Create wandering planets
-        for (let i = 0; i < 20; i++) {
+        // Create wandering planets with variety
+        for (let i = 0; i < 25; i++) {
             const x = Phaser.Math.Between(1000, GameConfig.world.width - 1000);
             const y = Phaser.Math.Between(1000, GameConfig.world.height - 1000);
-            const sizes = ['small', 'medium'];
-			const size = sizes[Math.floor(Math.random() * sizes.length)];
             
-            const planet = entityFactory.createPlanet(x, y, size);
+            // Use random planet profiles instead of just sizes
+            const planet = entityFactory.createPlanet(x, y); // null = random profile
             
             // Random velocity
             const angle = Math.random() * Math.PI * 2;
@@ -245,6 +244,15 @@ class GameScene extends Phaser.Scene {
             sound: () => {
                 this.sound.mute = !data.value;
                 eventBus.emit('AUDIO_SET_MUTE', { muted: !data.value });
+            },
+            purchaseAbility: () => {
+                eventBus.emit('PURCHASE_ABILITY', {
+                    abilityId: data.abilityId,
+                    slot: data.slot
+                });
+            },
+            closeAbilityShop: () => {
+                eventBus.emit('CLOSE_ABILITY_SHOP');
             }
         };
         

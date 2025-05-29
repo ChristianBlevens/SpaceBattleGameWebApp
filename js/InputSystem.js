@@ -109,17 +109,23 @@ class InputSystem {
             this.eventBus.emit('PLAYER_ABILITY', { ability: 'dash' });
         });
         
-        // Ability shortcuts
+        // Ability shortcuts for shop abilities (1-4)
         this.keys.ability1.on('down', () => {
-            this.eventBus.emit('PLAYER_ABILITY', { ability: 'boost' });
+            this.eventBus.emit('USE_ABILITY', { slot: 0 });
         });
         
         this.keys.ability2.on('down', () => {
-            this.eventBus.emit('PLAYER_ABILITY', { ability: 'shield' });
+            this.eventBus.emit('USE_ABILITY', { slot: 1 });
         });
         
         this.keys.ability3.on('down', () => {
-            this.eventBus.emit('PLAYER_ABILITY', { ability: 'blast' });
+            this.eventBus.emit('USE_ABILITY', { slot: 2 });
+        });
+        
+        // Add ability4 key for 4th slot
+        this.keys.ability4 = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR);
+        this.keys.ability4.on('down', () => {
+            this.eventBus.emit('USE_ABILITY', { slot: 3 });
         });
     }
     

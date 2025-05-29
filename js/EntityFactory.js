@@ -145,33 +145,59 @@ class EntityFactory {
         return enemyId;
     }
     
-    createPlanet(x, y, size = 'medium') {
-        const sizeConfig = {
-            small: { radius: 40, mass: 200, texture: 'planet-small' },
-            medium: { radius: 60, mass: 600, texture: 'planet-medium' },
-            large: { radius: 80, mass: 1200, texture: 'planet-large' }
-        };
+    createPlanet(x, y, profileTypeOrSize = null) {
+        let profile;
         
-        const config = sizeConfig[size];
+        // Support both old size-based system and new profile system
+        if (typeof profileTypeOrSize === 'string' && ['small', 'medium', 'large'].includes(profileTypeOrSize)) {
+            // Legacy size-based creation for compatibility
+            const sizeConfig = {
+                small: { radius: 80, mass: 200, texture: 'planet-small' },
+                medium: { radius: 120, mass: 600, texture: 'planet-medium' },
+                large: { radius: 160, mass: 1200, texture: 'planet-large' }
+            };
+            const config = sizeConfig[profileTypeOrSize];
+            profile = {
+                spriteRadius: config.radius,
+                colliderRadius: config.radius,
+                mass: config.mass,
+                texture: config.texture,
+                type: profileTypeOrSize
+            };
+        } else if (profileTypeOrSize && PLANET_PROFILES[profileTypeOrSize]) {
+            // Use specific planet profile
+            profile = getPlanetProfile(profileTypeOrSize);
+            profile.texture = `planet-${profileTypeOrSize}`;
+            profile.type = profileTypeOrSize;
+        } else {
+            // Random planet profile
+            profile = getRandomPlanetProfile();
+            // Find the type key for this profile
+            const type = Object.entries(PLANET_PROFILES).find(([key, p]) => p === profile)?.[0] || 'earth';
+            profile.texture = `planet-${type}`;
+            profile.type = type;
+        }
         
         // Create planet entity
         const planetId = this.entityManager.createEntity('planet', {
-            transform: Components.transform(x, y, 0, config.radius / 80),
-            physics: Components.physics(0, 0, config.mass, config.radius),
-            sprite: Components.sprite(config.texture)
+            transform: Components.transform(x, y, 0, profile.spriteRadius / 80),
+            physics: Components.physics(0, 0, profile.mass, profile.colliderRadius),
+            sprite: Components.sprite(profile.texture),
+            planetProfile: { type: profile.type, name: profile.name }
         });
         
         // Create sprite
-        const sprite = this.scene.matter.add.sprite(x, y, config.texture);
-        // Set the circle hitbox to match the exact visual size
-        sprite.setCircle(config.radius);
-        sprite.setMass(config.mass);
+        const sprite = this.scene.matter.add.sprite(x, y, profile.texture);
+        // Set the circle hitbox to match the exact collider size
+        sprite.setCircle(profile.colliderRadius);
+        sprite.setMass(profile.mass);
         sprite.setStatic(false);
         sprite.setFriction(0);
         sprite.setFrictionAir(0);
         sprite.setBounce(0.9);
         sprite.setData('entityId', planetId);
         sprite.setData('entityType', 'planet');
+        sprite.setData('planetType', profile.type);
         sprite.setRotation(0); // Ensure zero rotation
         sprite.setAngularVelocity(0); // No spinning
         
@@ -180,19 +206,29 @@ class EntityFactory {
         
         // Assign texture through RenderSystem
         if (this.scene.renderSystem) {
-            this.scene.renderSystem.assignEntityTexture(planetId, 'planet', size);
+            this.scene.renderSystem.assignEntityTexture(planetId, 'planet', profile.type);
         }
         
         return planetId;
     }
     
-    createOrbitalSystem(centerX, centerY, numPlanets, centralSize = 'large') {
-        // Create central body
-        const centralId = this.createPlanet(centerX, centerY, centralSize);
+    createOrbitalSystem(centerX, centerY, numPlanets, centralType = null) {
+        // Create central body - use specific types for gas giants or random large planet
+        let centralPlanetType = centralType;
+        if (!centralPlanetType) {
+            // Pick a random large planet for the center
+            const largeTypes = ['jupiter', 'saturn', 'neptune'];
+            centralPlanetType = largeTypes[Math.floor(Math.random() * largeTypes.length)];
+        }
+        
+        const centralId = this.createPlanet(centerX, centerY, centralPlanetType);
         const centralPhysics = this.entityManager.getComponent(centralId, 'physics');
         centralPhysics.mass *= 3; // Make it more massive
         
         const orbitingPlanets = [];
+        
+        // Moon/small planet types for orbiting bodies
+        const orbitingTypes = ['moon', 'mercury', 'europa', 'callisto', 'mars', 'ice', 'crystal'];
         
         // Create orbiting planets
         for (let i = 0; i < numPlanets; i++) {
@@ -202,7 +238,9 @@ class EntityFactory {
             const x = centerX + Math.cos(angle) * orbitRadius;
             const y = centerY + Math.sin(angle) * orbitRadius;
             
-            const planetId = this.createPlanet(x, y, 'small');
+            // Pick a random orbiting type
+            const orbitType = orbitingTypes[Math.floor(Math.random() * orbitingTypes.length)];
+            const planetId = this.createPlanet(x, y, orbitType);
             const physics = this.entityManager.getComponent(planetId, 'physics');
             
             // Calculate orbital velocity
@@ -227,7 +265,7 @@ class EntityFactory {
             transform: Components.transform(x, y),
             physics: Components.physics(0, 0, 0.1, 35), // Increased pickup radius
             sprite: Components.sprite(`powerup-${type}`),
-            powerup: Components.powerup(type, type === 'credits' ? 100 : 25),
+            powerup: Components.powerup(type, type === 'credits' ? 20 : 25),
             lifetime: Components.lifetime(10000)
         });
         

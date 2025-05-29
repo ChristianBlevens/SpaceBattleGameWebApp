@@ -36,11 +36,12 @@ document.addEventListener('alpine:init', () => {
         wavesCompleted: 0,
         totalKills: 0,
         maxCombo: 0,
-        cheapestUpgrade: 40,
+        cheapestUpgrade: 8,
         upgradeCosts: {
-            damage: 50,
-            speed: 40,
-            defense: 60
+            damage: 10,
+            speed: 8,
+            defense: 12,
+            energy: 8
         },
         dashCooldown: 0,
         maxDashCooldown: 2000, // 2 seconds
@@ -49,6 +50,12 @@ document.addEventListener('alpine:init', () => {
         disasterWarning: false,
         activeDisaster: null,
         abilitiesDisabled: false,
+        
+        // Ability shop state
+        abilityShopOpen: false,
+        selectedSlot: null,
+        availableAbilities: [],
+        playerAbilities: [null, null, null, null],
         
         // Methods
         quickUpgrade(type) {
@@ -85,6 +92,29 @@ document.addEventListener('alpine:init', () => {
         quitToMenu() {
             window.dispatchEvent(new CustomEvent('gameCommand', {
                 detail: { command: 'menu' }
+            }));
+        },
+        
+        selectSlot(index) {
+            this.selectedSlot = index;
+        },
+        
+        purchaseAbility(abilityId) {
+            if (this.selectedSlot === null) return;
+            
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { 
+                    command: 'purchaseAbility',
+                    abilityId: abilityId,
+                    slot: this.selectedSlot
+                }
+            }));
+        },
+        
+        closeAbilityShop() {
+            this.abilityShopOpen = false;
+            window.dispatchEvent(new CustomEvent('gameCommand', {
+                detail: { command: 'closeAbilityShop' }
             }));
         },
         
@@ -148,6 +178,11 @@ document.addEventListener('alpine:init', () => {
                 if ('abilitiesDisabled' in state) {
                     this.abilitiesDisabled = state.abilitiesDisabled;
                 }
+                
+                // Update abilities from AbilityShopSystem
+                if (state.abilities) {
+                    this.abilities = state.abilities;
+                }
             });
             
             // Listen for UI events
@@ -174,6 +209,40 @@ document.addEventListener('alpine:init', () => {
                         this.victory = data.victory;
                         this.wavesCompleted = data.wavesCompleted || 0;
                         this.totalKills = data.totalKills || 0;
+                        break;
+                        
+                    case 'abilityShopOpened':
+                        this.abilityShopOpen = true;
+                        this.availableAbilities = data.abilities || [];
+                        this.playerAbilities = data.playerSlots || [null, null, null, null];
+                        this.selectedSlot = null;
+                        break;
+                        
+                    case 'abilityPurchased':
+                        this.playerAbilities[data.slot] = data.ability;
+                        break;
+                }
+            });
+            
+            // Listen for ability shop events
+            window.addEventListener('abilityShopEvent', (event) => {
+                const { type, ...data } = event.detail;
+                
+                switch (type) {
+                    case 'open':
+                        this.abilityShopOpen = true;
+                        this.availableAbilities = data.abilities || [];
+                        this.playerAbilities = data.playerSlots || [null, null, null, null];
+                        this.selectedSlot = null;
+                        break;
+                        
+                    case 'purchased':
+                        this.playerAbilities[data.slot] = data.ability;
+                        this.credits = data.credits;
+                        break;
+                        
+                    case 'failed':
+                        // Show error message
                         break;
                 }
             });
@@ -208,7 +277,7 @@ const GameConfig = {
         baseDamage: 10,
         baseDefense: 10,
         chargeRate: 2.0,
-        energyRegen: 0.5
+        energyRegen: 2.0  // Increased from 0.5 to support ability usage
     },
     
     // Enemy faction definitions
@@ -259,12 +328,12 @@ const GameConfig = {
         waveDelay: 3000
     },
     
-    // Upgrade costs
+    // Upgrade costs - very cheap for frequent upgrades
     upgrades: {
-        damage: { base: 50, multiplier: 1.5 },
-        speed: { base: 40, multiplier: 1.4 },
-        defense: { base: 60, multiplier: 1.6 },
-        energy: { base: 45, multiplier: 1.45 }
+        damage: { base: 10, multiplier: 1.15 },    // Very cheap, slow scaling
+        speed: { base: 8, multiplier: 1.12 },      // Cheapest base
+        defense: { base: 12, multiplier: 1.18 },   // Slightly more expensive
+        energy: { base: 8, multiplier: 1.12 }      // Same as speed
     },
     
     // Effects settings

@@ -579,17 +579,17 @@ class BossSystem {
         // Remove boss health bar through UI manager
         this.eventBus.emit('REMOVE_BOSS_HEALTH_BAR');
         
-        // Boss defeated rewards
+        // Boss defeated rewards - significantly reduced
         this.eventBus.emit('BOSS_REWARD', {
-            credits: 1000 * this.bossNumber,
+            credits: 100 + (this.bossNumber * 50), // Was 1000 * bossNumber
             upgrades: Math.floor(this.bossNumber / 2) + 1
         });
         
         // Return to normal music
         this.eventBus.emit('PLAY_NORMAL_MUSIC');
         
-        // Continue to next wave
-        this.eventBus.emit('CONTINUE_TO_NEXT_WAVE');
+        // Don't continue to next wave immediately - wait for ability shop to close
+        // The AbilityShopSystem will emit CONTINUE_TO_NEXT_WAVE when shop closes
     }
     
     update(deltaTime) {

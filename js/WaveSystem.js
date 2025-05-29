@@ -338,24 +338,11 @@ class WaveSystem {
             // Update state
             this.gameState.update('waves.waveInProgress', false);
             
-            // Calculate rewards
-            const baseReward = 500 * waveNumber;
-            const pointReward = 1000 * waveNumber;
-            
-            this.gameState.addCredits(baseReward);
-            this.gameState.addScore(pointReward);
-            
-            // Emit wave complete event
+            // Don't give rewards here - CombatSystem handles wave rewards
+            // Just emit the wave complete event
             this.eventBus.emit('WAVE_COMPLETE', {
                 waveNumber: waveNumber,
                 isBossWave: waveConfig.isBossWave
-            });
-            
-            // Emit rewards event
-            this.eventBus.emit('WAVE_REWARDS', {
-                waveNumber: waveNumber,
-                credits: baseReward,
-                points: pointReward
             });
             
             // Play victory sound

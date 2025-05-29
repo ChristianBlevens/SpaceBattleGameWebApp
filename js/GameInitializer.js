@@ -23,6 +23,7 @@ class GameInitializer {
         this.abilitySystem = new AbilitySystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.upgradeSystem = new UpgradeSystem(this.eventBus, this.gameState, this.entityManager);
         this.disasterSystem = new DisasterSystem(scene);
+        this.abilityShopSystem = new AbilityShopSystem(scene, this.eventBus, this.gameState);
         
         // Initialize I/O systems
         this.renderSystem = new RenderSystem(scene, this.eventBus, this.entityManager);
@@ -74,6 +75,9 @@ class GameInitializer {
         this.disasterSystem.renderSystem = this.renderSystem;
         this.disasterSystem.init();
         
+        // Initialize ability shop system
+        this.abilityShopSystem.init();
+        
         // Configure event handlers for system coordination
         this.setupSystemCommunication();
     }
@@ -105,6 +109,9 @@ class GameInitializer {
         
         // Update disaster system
         this.disasterSystem.update(dt);
+        
+        // Update ability shop
+        this.abilityShopSystem.update(dt);
         
         // Update rendering
         this.renderSystem.update(dt);

@@ -55,8 +55,10 @@
 	<script src="js/AbilitySystem.js"></script>
 	<script src="js/UpgradeSystem.js"></script>
 	<script src="js/DisasterSystem.js"></script>
+	<script src="js/AbilityShopSystem.js"></script>
 
 	<!-- Utilities -->
+	<script src="js/PlanetProfiles.js"></script>
 	<script src="js/GameInitializer.js"></script>
 	<script src="js/EntityFactory.js"></script>
 	<script src="js/AudioManager.js"></script>
@@ -144,6 +146,11 @@
                         @click="quickUpgrade('defense')"
                         :disabled="credits < upgradeCosts.defense">
                     <i class="fas fa-shield-alt"></i> DEF (<span x-text="upgradeCosts.defense"></span>)
+                </button>
+                <button class="upgrade-btn nes-btn is-info" 
+                        @click="quickUpgrade('energy')"
+                        :disabled="credits < upgradeCosts.energy">
+                    <i class="fas fa-bolt"></i> ENG (<span x-text="upgradeCosts.energy"></span>)
                 </button>
             </div>
         </div>
@@ -337,6 +344,76 @@
                     </button>
                     <button class="nes-btn is-error" @click="quitToMenu()">
                         <i class="fas fa-sign-out-alt"></i> Quit to Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ability Shop -->
+        <div class="ability-shop-overlay" x-show="abilityShopOpen" x-transition>
+            <div class="ability-shop-content nes-container is-dark animate__animated animate__fadeIn">
+                <h2 class="shop-title">Choose an Ability</h2>
+                <p class="shop-subtitle">Credits: <span x-text="credits"></span></p>
+                
+                <div class="ability-slots">
+                    <h3>Your Ability Slots</h3>
+                    <div class="slots-container">
+                        <template x-for="(slot, index) in [0,1,2,3]" :key="index">
+                            <div class="ability-slot-display" 
+                                 :class="{ 'selected': selectedSlot === index, 'filled': playerAbilities[index] }"
+                                 @click="selectSlot(index)">
+                                <div class="slot-number" x-text="index + 1"></div>
+                                <div class="slot-content" x-show="playerAbilities[index]">
+                                    <i class="fas" :class="playerAbilities[index]?.icon"></i>
+                                    <span x-text="playerAbilities[index]?.name"></span>
+                                </div>
+                                <div class="slot-empty" x-show="!playerAbilities[index]">
+                                    Empty
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <div class="available-abilities">
+                    <h3>Available Abilities</h3>
+                    <div class="abilities-grid">
+                        <template x-for="ability in availableAbilities" :key="ability.id">
+                            <div class="ability-card nes-container" 
+                                 :class="{ 'is-disabled': credits < ability.cost || !selectedSlot !== null }">
+                                <div class="ability-header">
+                                    <i class="fas ability-icon" :class="ability.icon"></i>
+                                    <h4 x-text="ability.name"></h4>
+                                </div>
+                                <p class="ability-description" x-text="ability.description"></p>
+                                <div class="ability-stats">
+                                    <span class="ability-cost">
+                                        <i class="fas fa-coins"></i>
+                                        <span x-text="ability.cost"></span>
+                                    </span>
+                                    <span class="ability-energy">
+                                        <i class="fas fa-bolt"></i>
+                                        <span x-text="ability.energyCost"></span>
+                                    </span>
+                                    <span class="ability-cooldown">
+                                        <i class="fas fa-clock"></i>
+                                        <span x-text="`${ability.cooldown/1000}s`"></span>
+                                    </span>
+                                </div>
+                                <button class="nes-btn is-primary ability-buy-btn" 
+                                        @click="purchaseAbility(ability.id)"
+                                        :disabled="credits < ability.cost || selectedSlot === null">
+                                    <span x-show="selectedSlot !== null">Assign to Slot <span x-text="selectedSlot + 1"></span></span>
+                                    <span x-show="selectedSlot === null">Select a Slot First</span>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <div class="shop-actions">
+                    <button class="nes-btn is-success" @click="closeAbilityShop()">
+                        Continue to Next Wave
                     </button>
                 </div>
             </div>

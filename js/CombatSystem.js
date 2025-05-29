@@ -83,9 +83,9 @@ class CombatSystem {
                 if (!projectileData.hitEntities.has(entityB)) {
                     projectileData.hitEntities.add(entityB);
                     
-                    // Apply damage
+                    // Apply damage with sourceId being the projectile owner
                     //console.log(`[CombatSystem] Projectile hit: ${projectileData.damage} damage from ${projectileData.ownerId}`);
-                    this.applyDamage(entityB, projectileData.damage, entityA);
+                    this.applyDamage(entityB, projectileData.damage, projectileData.ownerId);
                     
                     // Destroy projectile if not penetrating
                     if (!projectileData.penetrating) {
@@ -187,7 +187,7 @@ class CombatSystem {
         if (targetEntity.type === 'player') {
             this.damagePlayer(damage);
         } else if (targetEntity.type === 'enemy') {
-            this.damageEnemy(targetId, damage);
+            this.damageEnemy(targetId, damage, sourceId);
         }
     }
     
@@ -209,7 +209,7 @@ class CombatSystem {
         }
     }
     
-    damageEnemy(enemyId, damage) {
+    damageEnemy(enemyId, damage, sourceId = null) {
         // Apply damage to enemy with boss modifiers
         const health = this.entityManager.getComponent(enemyId, 'health');
         const transform = this.entityManager.getComponent(enemyId, 'transform');
@@ -243,8 +243,8 @@ class CombatSystem {
         health.current -= actualDamage;
         
         if (health.current <= 0) {
-            // Enemy defeated
-            this.handleEnemyDeath(enemyId, transform);
+            // Enemy defeated - pass sourceId to handleEnemyDeath
+            this.handleEnemyDeath(enemyId, transform, sourceId);
         } else {
             // Enemy damaged but alive
             this.eventBus.emit('ENEMY_DAMAGED', {
@@ -258,15 +258,51 @@ class CombatSystem {
         }
     }
     
-    handleEnemyDeath(enemyId, transform) {
-        //console.log('[CombatSystem] Enemy death:', enemyId);
+    handleEnemyDeath(enemyId, transform, sourceId = null) {
+        //console.log('[CombatSystem] Enemy death:', enemyId, 'killed by:', sourceId);
         // Update game state
         const combo = this.gameState.get('game.combo');
         const points = 100 * (combo + 1);
         
+        // Always add score for any kill
         this.gameState.addScore(points);
-        this.gameState.addCredits(50);
-        this.gameState.incrementCombo();
+        
+        // Only give credits if the player killed the enemy
+        const playerId = this.gameState.getPlayerId();
+        if (sourceId === playerId) {
+            // Different credit rewards based on enemy type
+            const entity = this.entityManager.getEntity(enemyId);
+            let creditReward = 5; // Default for basic enemies
+            
+            if (entity) {
+                const ai = this.entityManager.getComponent(enemyId, 'ai');
+                if (ai && ai.faction) {
+                    // Different rewards for different factions
+                    switch (ai.faction) {
+                        case 'swarm':
+                            creditReward = 3; // Weakest enemies
+                            break;
+                        case 'sentinel':
+                            creditReward = 5; // Medium enemies
+                            break;
+                        case 'phantom':
+                            creditReward = 7; // Harder enemies
+                            break;
+                        case 'titan':
+                            creditReward = 15; // Toughest regular enemies
+                            break;
+                    }
+                }
+                
+                // Boss gives more
+                if (entity.type === 'boss') {
+                    creditReward = 100; // Boss kill bonus
+                }
+            }
+            
+            this.gameState.addCredits(creditReward);
+            this.gameState.incrementCombo();
+        }
         
         const totalKills = this.gameState.get('game.totalKills') + 1;
         this.gameState.update('game.totalKills', totalKills);
@@ -280,11 +316,12 @@ class CombatSystem {
             entityId: enemyId,
             position: transform ? { x: transform.x, y: transform.y } : null,
             points: points,
-            combo: combo + 1
+            combo: combo + 1,
+            killedByPlayer: sourceId === playerId
         });
         
-        // Spawn powerup chance
-        if (Math.random() < 0.3 && transform) {
+        // Spawn powerup chance - only if player killed it
+        if (sourceId === playerId && Math.random() < 0.3 && transform) {
             const types = ['health', 'energy', 'credits'];
             const type = types[Math.floor(Math.random() * types.length)];
             this.eventBus.emit('SPAWN_POWERUP', {
@@ -371,10 +408,12 @@ class CombatSystem {
     }
     
     processWaveRewards(waveNumber) {
-        // Award wave completion bonuses
-        const waveBonus = 1000 * waveNumber;
+        // Award wave completion bonuses - significantly reduced
+        const waveBonus = 1000 * waveNumber; // Score stays the same
+        const creditBonus = 50 + (waveNumber * 10); // Was 500 * waveNumber
+        
         this.gameState.addScore(waveBonus);
-        this.gameState.addCredits(500 * waveNumber);
+        this.gameState.addCredits(creditBonus);
         
         //console.log('[CombatSystem] Setting waveInProgress to false');
         this.gameState.update('waves.waveInProgress', false);
@@ -383,7 +422,7 @@ class CombatSystem {
         this.eventBus.emit('WAVE_REWARDS', {
             waveNumber: waveNumber,
             points: waveBonus,
-            credits: 500 * waveNumber
+            credits: creditBonus
         });
     }
     
