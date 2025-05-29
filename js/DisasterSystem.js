@@ -6,7 +6,7 @@ class DisasterSystem {
         this.renderSystem = null;
         this.currentDisaster = null;
         this.disasterTimer = 0;
-        this.nextDisasterTime = 30000 + Math.random() * 60000; // .5 to 1.5 minutes (normal)
+        this.nextDisasterTime = GameConstants.DISASTERS.MIN_INTERVAL + Math.random() * (GameConstants.DISASTERS.MAX_INTERVAL - GameConstants.DISASTERS.MIN_INTERVAL);
         this.disasters = [
             'meteorShower',
             'blackHole', 
@@ -314,8 +314,19 @@ class DisasterSystem {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance < 30 * scale) {
-                    // Damage player
-                    this.eventBus.emit('PLAYER_HIT', { damage: 15 });
+                    // Use area damage for meteor impact
+                    this.eventBus.emit('AREA_DAMAGE', {
+                        x: meteor.x,
+                        y: meteor.y,
+                        radius: 60 * scale,
+                        damage: GameConstants.DISASTERS.METEOR_SHOWER.DAMAGE,
+                        sourceId: null,
+                        options: {
+                            falloff: true,
+                            knockback: 200,
+                            damageType: 'meteor'
+                        }
+                    });
                     
                     // Create explosion effect
                     this.createExplosionEffect(meteor.x, meteor.y, 0xff6600, scale);
@@ -414,8 +425,15 @@ class DisasterSystem {
             
             // Apply damage if too close
             if (distance < damageRadius) {
-                const damageAmount = damage * (delta / 1000) * (1 - distance / damageRadius);
-                this.eventBus.emit('PLAYER_HIT', { damage: damageAmount });
+                const damageAmount = GameConstants.DISASTERS.BLACK_HOLE.DAMAGE * (delta / 1000) * (1 - distance / damageRadius);
+                const playerId = this.entityManager.getEntitiesByType('player')[0];
+                if (playerId) {
+                    this.eventBus.emit('DAMAGE_ENTITY', { 
+                        entityId: playerId, 
+                        damage: damageAmount, 
+                        sourceId: null 
+                    });
+                }
             }
         }
         
@@ -503,7 +521,14 @@ class DisasterSystem {
         // Damage player
         const playerHealth = this.scene.gameInitializer?.gameState?.get('player.health');
         if (playerHealth) {
-            this.eventBus.emit('PLAYER_HIT', { damage: 10 });
+            const playerId = this.entityManager.getEntitiesByType('player')[0];
+            if (playerId) {
+                this.eventBus.emit('DAMAGE_ENTITY', { 
+                    entityId: playerId, 
+                    damage: GameConstants.DISASTERS.SOLAR_FLARE.WAVE_DAMAGE, 
+                    sourceId: null 
+                });
+            }
         }
         
         // Damage enemies
@@ -811,7 +836,12 @@ class DisasterSystem {
                     );
                     
                     if (dist < 20) {
-                        health.current -= rift.damage * (delta / 1000);
+                        const damage = GameConstants.DISASTERS.COSMIC_RIFT.DAMAGE * (delta / 1000);
+                        this.eventBus.emit('DAMAGE_ENTITY', { 
+                            entityId: entityId, 
+                            damage: damage, 
+                            sourceId: null 
+                        });
                     }
                 });
             }
@@ -833,7 +863,7 @@ class DisasterSystem {
         
         this.entityManager.addComponent(riftId, 'rift', {
             x1, y1, x2, y2,
-            damage: 20,
+            damage: GameConstants.DISASTERS.COSMIC_RIFT.DAMAGE,
             age: 0
         });
         

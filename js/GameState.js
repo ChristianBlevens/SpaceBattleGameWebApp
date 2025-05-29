@@ -58,12 +58,50 @@ class GameState {
             // Wave progression tracking
             waves: {
                 current: 0,
+                phase: 'waiting', // 'waiting', 'spawning', 'active', 'boss', 'complete'
                 enemiesRemaining: 0,
+                enemiesAlive: 0,
                 totalEnemies: 0,
+                enemiesSpawned: 0,
+                spawnsRemaining: 0,
+                spawnTimer: 0,
+                spawnDelay: 100,
+                spawnQueue: [],
+                waveStartTime: 0,
                 waveInProgress: false,
                 bossWave: false,
-                spawnsRemaining: 0,
                 nextSpawnTime: 0
+            },
+            
+            // Boss state
+            boss: {
+                active: false,
+                currentBossId: null,
+                bossNumber: 0,
+                afterWaveNumber: 0,
+                healthPercent: 100
+            },
+            
+            // Disaster state
+            disaster: {
+                active: false,
+                type: null,
+                timer: 0,
+                duration: 0,
+                nextDisasterTime: 0,
+                warningActive: false,
+                data: {}
+            },
+            
+            // Weapon state
+            weapons: {
+                activeProjectiles: 0,
+                playerWeapon: {
+                    charging: false,
+                    chargeTime: 0,
+                    chargePercent: 0,
+                    cooldownRemaining: 0
+                }
             },
             
             // Mission objectives and progress
@@ -345,6 +383,28 @@ class GameState {
     // Simplified state setters/getters
     set(key, value) {
         this.update(key, value);
+    }
+    
+    // Reset game state to initial values
+    reset() {
+        console.log('[GameState] Resetting game state');
+        
+        // Reset to initial state
+        this.state = this.getInitialState();
+        
+        // Clear history
+        this.history = [];
+        this.historyIndex = -1;
+        this.previousState = null;
+        
+        // Reset player ID
+        this.playerId = null;
+        
+        // Notify listeners of reset
+        this.notify({ reset: true });
+        
+        // Emit reset event
+        this.eventBus.emit('GAME_STATE_RESET');
     }
 }
 

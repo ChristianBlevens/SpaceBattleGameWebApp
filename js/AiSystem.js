@@ -37,7 +37,8 @@ class AISystem {
             swarm: new SwarmBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
             sentinel: new SentinelBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
             phantom: new PhantomBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
-            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config)
+            titan: new TitanBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config),
+            boss: new BossBehavior(this.eventBus, this.entityManager, this.scene, this.traits, this.config)
         };
         
         // Listen for player creation
@@ -1368,6 +1369,325 @@ class TitanBehavior extends BaseBehavior {
         this.eventBus.emit('TITAN_SHOCKWAVE', {
             x: transform.x,
             y: transform.y
+        });
+    }
+}
+
+// Boss behavior - Complex AI for boss entities
+class BossBehavior extends BaseBehavior {
+    constructor(eventBus, entityManager, scene, traits, config) {
+        super(eventBus, entityManager, scene, traits, config);
+        this.bossDetectionRange = 3000;
+        this.abilityExecutors = this.initializeAbilityExecutors();
+    }
+    
+    initializeAbilityExecutors() {
+        return {
+            shockwave: (bossId, transform) => this.executeShockwave(bossId, transform),
+            summon: (bossId, transform) => this.executeSummon(bossId, transform),
+            teleport: (bossId, transform) => this.executeTeleport(bossId, transform),
+            multishot: (bossId, transform) => this.executeMultishot(bossId, transform),
+            blackhole: (bossId, transform) => this.executeBlackhole(bossId, transform),
+            beam: (bossId, transform) => this.executeBeam(bossId, transform),
+            lightning: (bossId, transform) => this.executeLightning(bossId, transform),
+            heal: (bossId, transform) => this.executeHeal(bossId, transform)
+        };
+    }
+    
+    updateGroup(entities, deltaTime, playerId) {
+        entities.forEach(entityId => {
+            this.updateEntity(entityId, deltaTime);
+        });
+    }
+    
+    updateEntity(entityId, deltaTime) {
+        const ai = this.entityManager.getComponent(entityId, 'ai');
+        const transform = this.entityManager.getComponent(entityId, 'transform');
+        const physics = this.entityManager.getComponent(entityId, 'physics');
+        const boss = this.entityManager.getComponent(entityId, 'boss');
+        
+        if (!ai || !transform || !physics || !boss) return;
+        
+        // Initialize boss AI memory
+        if (!ai.memory.initialized) {
+            ai.memory.initialized = true;
+            ai.memory.behavior = boss.behavior || 'aggressive';
+            ai.memory.abilityTimer = 0;
+            ai.memory.nextAbilityTime = 3000;
+            ai.memory.lastAbility = null;
+            ai.memory.phase = 1;
+            ai.memory.targetId = null;
+        }
+        
+        // Update ability timer
+        ai.memory.abilityTimer += deltaTime * 1000;
+        
+        // Find target
+        const target = this.traits.targeting.getNearestTarget(entityId, transform, 'boss', this.bossDetectionRange);
+        
+        if (target) {
+            ai.memory.targetId = target.id;
+        }
+        
+        // Execute ability if timer is ready
+        if (ai.memory.abilityTimer >= ai.memory.nextAbilityTime && boss.abilities && boss.abilities.length > 0) {
+            this.useAbility(entityId, transform, boss, ai);
+            ai.memory.abilityTimer = 0;
+            ai.memory.nextAbilityTime = 3000 + Math.random() * 2000;
+        }
+        
+        // Movement based on behavior type
+        let forceX = 0, forceY = 0;
+        
+        if (target) {
+            switch (ai.memory.behavior) {
+                case 'aggressive':
+                    // Direct pursuit
+                    const pursuit = this.traits.movement.moveToward(
+                        transform,
+                        target.transform.x,
+                        target.transform.y,
+                        0.02
+                    );
+                    forceX = pursuit.x;
+                    forceY = pursuit.y;
+                    break;
+                    
+                case 'tactical':
+                    // Maintain optimal distance
+                    const tacticalDistance = this.traits.movement.maintainDistance(
+                        transform,
+                        target.transform,
+                        500,
+                        100
+                    );
+                    forceX = tacticalDistance.x;
+                    forceY = tacticalDistance.y;
+                    
+                    // Strafe
+                    const strafeAngle = Date.now() * 0.001;
+                    const perpX = -tacticalDistance.y;
+                    const perpY = tacticalDistance.x;
+                    forceX += perpX * Math.sin(strafeAngle) * 0.005;
+                    forceY += perpY * Math.sin(strafeAngle) * 0.005;
+                    break;
+                    
+                case 'defensive':
+                    // Keep distance and circle
+                    if (!ai.memory.orbitAngle) {
+                        ai.memory.orbitAngle = 0;
+                    }
+                    ai.memory.orbitAngle += 0.002;
+                    
+                    const orbit = this.traits.movement.orbit(
+                        transform,
+                        target.transform.x,
+                        target.transform.y,
+                        600,
+                        ai.memory.orbitAngle,
+                        0.015
+                    );
+                    forceX = orbit.x;
+                    forceY = orbit.y;
+                    break;
+            }
+            
+            // Shoot at target occasionally
+            if (this.traits.shooting.canShoot(entityId, target.distance) && Math.random() < 0.02) {
+                this.traits.shooting.aimAndShoot(entityId, target, 0.95);
+            }
+        } else {
+            // Patrol center area
+            if (!ai.memory.patrolAngle) {
+                ai.memory.patrolAngle = Math.random() * Math.PI * 2;
+            }
+            ai.memory.patrolAngle += 0.001;
+            
+            const centerX = GameConstants.WORLD.CENTER_X;
+            const centerY = GameConstants.WORLD.CENTER_Y;
+            const patrolRadius = 2000;
+            
+            const patrolX = centerX + Math.cos(ai.memory.patrolAngle) * patrolRadius;
+            const patrolY = centerY + Math.sin(ai.memory.patrolAngle) * patrolRadius;
+            
+            const patrol = this.traits.movement.moveToward(
+                transform,
+                patrolX,
+                patrolY,
+                0.01
+            );
+            forceX = patrol.x;
+            forceY = patrol.y;
+        }
+        
+        // Gravity avoidance (bosses resist but still avoid)
+        const gravitySources = this.traits.gravityAvoidance.detectGravitySources(transform);
+        const gravityAvoidance = this.traits.gravityAvoidance.calculateAvoidance(transform, gravitySources, 0.3);
+        forceX += gravityAvoidance.x;
+        forceY += gravityAvoidance.y;
+        
+        // Apply forces
+        this.applyForce(entityId, forceX, forceY);
+        
+        // Update physics
+        physics.maxSpeed = boss.speed || 8;
+        physics.damping = 0.995;
+    }
+    
+    useAbility(bossId, transform, boss, ai) {
+        // Select ability based on situation
+        let selectedAbility = null;
+        const health = this.entityManager.getComponent(bossId, 'health');
+        const healthPercent = health ? health.current / health.max : 1;
+        
+        // Phase-based ability selection
+        if (healthPercent < 0.3) {
+            ai.memory.phase = 3;
+        } else if (healthPercent < 0.6) {
+            ai.memory.phase = 2;
+        }
+        
+        // Filter abilities based on context
+        const availableAbilities = boss.abilities.filter(ability => {
+            if (ability === 'heal' && healthPercent > 0.5) return false;
+            if (ability === ai.memory.lastAbility) return false; // Don't repeat
+            return true;
+        });
+        
+        if (availableAbilities.length > 0) {
+            selectedAbility = availableAbilities[Math.floor(Math.random() * availableAbilities.length)];
+        } else if (boss.abilities.length > 0) {
+            selectedAbility = boss.abilities[Math.floor(Math.random() * boss.abilities.length)];
+        }
+        
+        if (selectedAbility && this.abilityExecutors[selectedAbility]) {
+            this.abilityExecutors[selectedAbility](bossId, transform);
+            ai.memory.lastAbility = selectedAbility;
+            
+            // Emit ability event
+            this.eventBus.emit('BOSS_ABILITY_USED', {
+                bossId: bossId,
+                ability: selectedAbility
+            });
+        }
+    }
+    
+    // Ability implementations
+    executeShockwave(bossId, transform) {
+        const params = GameConstants.BOSSES.ABILITIES.shockwave;
+        this.eventBus.emit('CREATE_SHOCKWAVE', {
+            x: transform.x,
+            y: transform.y,
+            radius: params.radius,
+            damage: params.damage,
+            force: params.force
+        });
+    }
+    
+    executeSummon(bossId, transform) {
+        const params = GameConstants.BOSSES.ABILITIES.summon;
+        const count = params.count.min + Math.floor(Math.random() * (params.count.max - params.count.min + 1));
+        
+        for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2;
+            const x = transform.x + Math.cos(angle) * params.distance;
+            const y = transform.y + Math.sin(angle) * params.distance;
+            
+            this.eventBus.emit('SPAWN_MINION', {
+                faction: 'swarm',
+                x: x,
+                y: y,
+                scale: params.minionScale,
+                isBossMinion: true
+            });
+        }
+    }
+    
+    executeTeleport(bossId, transform) {
+        const params = GameConstants.BOSSES.ABILITIES.teleport;
+        const angle = Math.random() * Math.PI * 2;
+        const distance = params.range;
+        
+        const newX = transform.x + Math.cos(angle) * distance;
+        const newY = transform.y + Math.sin(angle) * distance;
+        
+        // Clamp to world bounds
+        const clampedX = Math.max(500, Math.min(GameConstants.WORLD.WIDTH - 500, newX));
+        const clampedY = Math.max(500, Math.min(GameConstants.WORLD.HEIGHT - 500, newY));
+        
+        this.eventBus.emit('TELEPORT_ENTITY', {
+            entityId: bossId,
+            x: clampedX,
+            y: clampedY
+        });
+    }
+    
+    executeMultishot(bossId, transform) {
+        const params = GameConstants.BOSSES.ABILITIES.multishot;
+        
+        for (let i = 0; i < params.projectileCount; i++) {
+            const angle = (i / params.projectileCount) * Math.PI * 2;
+            
+            this.eventBus.emit('ENEMY_SHOOT', {
+                enemyId: bossId,
+                targetPosition: {
+                    x: transform.x + Math.cos(angle) * 1000,
+                    y: transform.y + Math.sin(angle) * 1000
+                },
+                projectileSpeed: params.projectileSpeed,
+                projectileDamage: params.projectileDamage
+            });
+        }
+    }
+    
+    executeBlackhole(bossId, transform) {
+        const params = GameConstants.BOSSES.ABILITIES.blackhole;
+        this.eventBus.emit('CREATE_BLACK_HOLE', {
+            x: transform.x,
+            y: transform.y,
+            radius: params.radius,
+            force: params.force,
+            duration: params.duration
+        });
+    }
+    
+    executeBeam(bossId, transform) {
+        const ai = this.entityManager.getComponent(bossId, 'ai');
+        if (!ai || !ai.memory.targetId) return;
+        
+        const params = GameConstants.BOSSES.ABILITIES.beam;
+        this.eventBus.emit('CREATE_BEAM', {
+            sourceId: bossId,
+            targetId: ai.memory.targetId,
+            damage: params.damage,
+            duration: params.duration
+        });
+    }
+    
+    executeLightning(bossId, transform) {
+        const ai = this.entityManager.getComponent(bossId, 'ai');
+        if (!ai || !ai.memory.targetId) return;
+        
+        const params = GameConstants.BOSSES.ABILITIES.lightning;
+        this.eventBus.emit('CREATE_LIGHTNING', {
+            sourceId: bossId,
+            targetId: ai.memory.targetId,
+            damage: params.damage,
+            chains: params.chains
+        });
+    }
+    
+    executeHeal(bossId, transform) {
+        const health = this.entityManager.getComponent(bossId, 'health');
+        if (!health) return;
+        
+        const params = GameConstants.BOSSES.ABILITIES.heal;
+        const healAmount = Math.floor(health.max * params.percentageOfMax);
+        health.current = Math.min(health.current + healAmount, health.max);
+        
+        this.eventBus.emit('BOSS_HEALED', {
+            bossId: bossId,
+            amount: healAmount
         });
     }
 }

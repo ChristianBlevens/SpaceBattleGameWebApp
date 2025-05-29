@@ -50,7 +50,8 @@ class InputSystem {
             debug: Phaser.Input.Keyboard.KeyCodes.F1,
             ability1: Phaser.Input.Keyboard.KeyCodes.ONE,
             ability2: Phaser.Input.Keyboard.KeyCodes.TWO,
-            ability3: Phaser.Input.Keyboard.KeyCodes.THREE
+            ability3: Phaser.Input.Keyboard.KeyCodes.THREE,
+            debugCredits: Phaser.Input.Keyboard.KeyCodes.I
         });
         
         // ESC handler - pause game
@@ -126,6 +127,14 @@ class InputSystem {
         this.keys.ability4 = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR);
         this.keys.ability4.on('down', () => {
             this.eventBus.emit('USE_ABILITY', { slot: 3 });
+        });
+        
+        // Debug key I - add 10 credits
+        this.keys.debugCredits.on('down', () => {
+            console.log('[Debug] Adding 10 credits');
+            this.gameState.addCredits(10);
+            // Also emit event for UI feedback
+            this.eventBus.emit('DEBUG_CREDITS_ADDED', { amount: 10 });
         });
         
     }

@@ -1236,22 +1236,27 @@ class RenderSystem {
         const padding = 40;
         const markerSize = 20;
         
-        // Query all enemies by type
+        // Query all enemies and bosses by type
         const enemies = this.entityManager.getEntitiesByType('enemy');
+        const bosses = this.entityManager.getEntitiesByType('boss');
+        const allHostiles = [...enemies, ...bosses];
         
-        enemies.forEach(enemyId => {
+        allHostiles.forEach(enemyId => {
             const enemySprite = this.scene.sprites.get(enemyId);
             if (!enemySprite || !enemySprite.active) return;
             
             // Get enemy faction for color
+            const entity = this.entityManager.getEntity(enemyId);
             const faction = this.entityManager.getComponent(enemyId, 'faction');
             const factionColors = {
                 swarm: 0xff6666,
                 sentinel: 0x66ff66,
                 phantom: 0x9966ff,
-                titan: 0xff9966
+                titan: 0xff9966,
+                boss: 0xff0000  // Red for bosses
             };
-            const color = factionColors[faction?.name] || 0xffffff;
+            // Use red for bosses, faction color for enemies
+            const color = entity?.type === 'boss' ? 0xff0000 : (factionColors[faction?.name] || 0xffffff);
             
             // Check if enemy is visible in camera viewport
             const inViewport = camera.worldView.contains(enemySprite.x, enemySprite.y);
@@ -1314,6 +1319,24 @@ class RenderSystem {
                 // Add outer circle for visibility
                 this.markerGraphics.lineStyle(2, 0x000000, 0.8);
                 this.markerGraphics.strokeCircle(indicatorX, indicatorY, markerSize * 1.2);
+                
+                // Add extra indicator for bosses
+                if (entity?.type === 'boss') {
+                    this.markerGraphics.lineStyle(3, color, 1);
+                    this.markerGraphics.strokeCircle(indicatorX, indicatorY, markerSize * 1.8);
+                    // Add "BOSS" text
+                    const bossText = this.scene.add.text(indicatorX, indicatorY - markerSize * 2, 'BOSS', {
+                        fontSize: '12px',
+                        fontFamily: 'Orbitron, monospace',
+                        color: '#ff0000',
+                        stroke: '#000000',
+                        strokeThickness: 2
+                    });
+                    bossText.setOrigin(0.5);
+                    bossText.setDepth(901);
+                    // Remove text next frame
+                    this.scene.time.delayedCall(100, () => bossText.destroy());
+                }
                 
                 // Calculate distance
                 const distance = Math.sqrt(dx * dx + dy * dy);

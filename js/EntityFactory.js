@@ -437,7 +437,9 @@ class EntityFactory {
                 abilities: bossStats.abilities,
                 name: bossStats.name,
                 scale: bossStats.scale,
-                phase: 1
+                phase: 1,
+                behavior: bossStats.behavior,
+                speed: bossStats.speed
             }
         });
         

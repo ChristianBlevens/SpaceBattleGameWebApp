@@ -164,6 +164,17 @@ class GameScene extends Phaser.Scene {
             entityFactory.createPowerup(data.x, data.y, data.type);
         });
         
+        // Minion spawning (from boss abilities)
+        eventBus.on('SPAWN_MINION', (data) => {
+            const minionId = entityFactory.createEnemy(data.faction, data.x, data.y, { x: 0, y: 0 }, data.scale || 1);
+            if (minionId && data.isBossMinion) {
+                const ai = entityManager.getComponent(minionId, 'ai');
+                if (ai) {
+                    ai.isBossMinion = true;
+                }
+            }
+        });
+        
         // UI commands
         window.addEventListener('gameCommand', (event) => {
             this.handleUICommand(event.detail);
@@ -219,16 +230,8 @@ class GameScene extends Phaser.Scene {
                 this.scene.restart();
             },
             menu: () => {
-                // Clear all UI states before returning to menu
-                gameState.update('game.paused', false);
-                gameState.update('game.gameOver', false);
-                
-                // Directly update Alpine.js data
-                const alpineData = Alpine.$data(document.querySelector('[x-data="gameUI"]'));
-                if (alpineData) {
-                    alpineData.paused = false;
-                    alpineData.gameOver = false;
-                }
+                // Reset the entire game state
+                gameState.reset();
                 
                 // Stop the game properly before returning to menu
                 eventBus.emit('AUDIO_STOP_MUSIC');

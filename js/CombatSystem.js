@@ -39,6 +39,11 @@ class CombatSystem {
         this.eventBus.on('DAMAGE_ENTITY', (data) => {
             this.applyDamage(data.entityId, data.damage, data.sourceId);
         });
+        
+        // Listen for area damage events
+        this.eventBus.on('AREA_DAMAGE', (data) => {
+            this.applyAreaDamage(data.x, data.y, data.radius, data.damage, data.sourceId, data.options);
+        });
     }
     
     update(deltaTime, entityManager) {
@@ -191,7 +196,7 @@ class CombatSystem {
         
         if (targetEntity.type === 'player') {
             this.damagePlayer(damage);
-        } else if (targetEntity.type === 'enemy') {
+        } else if (targetEntity.type === 'enemy' || targetEntity.type === 'boss') {
             this.damageEnemy(targetId, damage, sourceId);
         }
     }
@@ -201,9 +206,21 @@ class CombatSystem {
         const health = this.entityManager.getComponent(playerId, 'health');
         if (!health || health.invulnerable) return;
         
-        const actualDamage = this.gameState.damagePlayer(damage);
+        // Calculate damage with defense
+        const defense = this.gameState.get('player.stats.defense');
+        const actualDamage = Math.max(1, damage - defense * 0.5);
         
-        if (actualDamage > 0) {
+        // Update health through GameState
+        const currentHealth = this.gameState.get('player.health');
+        const newHealth = Math.max(0, currentHealth - actualDamage);
+        this.gameState.update('player.health', newHealth);
+        this.gameState.update('game.totalDamageTaken', this.gameState.get('game.totalDamageTaken') + actualDamage);
+        
+        if (newHealth <= 0) {
+            this.gameState.update('player.alive', false);
+            this.gameState.update('game.gameOver', true);
+            this.handlePlayerDeath();
+        } else if (actualDamage > 0) {
             // Only emit event for other systems to handle
             this.eventBus.emit('PLAYER_DAMAGED', { 
                 damage: actualDamage 
@@ -347,9 +364,12 @@ class CombatSystem {
         // Apply powerup effect by type
         switch (powerupData.type) {
             case 'health':
-                this.gameState.healPlayer(powerupData.value);
+                const currentHealth = this.gameState.get('player.health');
+                const maxHealth = this.gameState.get('player.maxHealth');
+                const actualHeal = Math.min(powerupData.value, maxHealth - currentHealth);
+                this.gameState.update('player.health', currentHealth + actualHeal);
                 this.eventBus.emit('PLAYER_HEAL', { 
-                    amount: powerupData.value 
+                    amount: actualHeal 
                 });
                 break;
                 
@@ -423,77 +443,19 @@ class CombatSystem {
     }
     
     handleTitanSlam(data) {
-        // Area damage effect for titan slam attack
-        const { attackerId, x, y, radius, damage, knockback } = data;
-        
-        // Determine attacker faction for friendly fire check
-        const attackerAI = this.entityManager.getComponent(attackerId, 'ai');
-        const attackerFaction = attackerAI ? attackerAI.faction : null;
-        
-        // Find all entities in slam radius
-        const affectedEntities = [];
-        const entities = this.entityManager.query('transform', 'health');
-        
-        entities.forEach(entityId => {
-            const transform = this.entityManager.getComponent(entityId, 'transform');
-            if (!transform) return;
-            
-            const dx = transform.x - x;
-            const dy = transform.y - y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            
-            if (dist < radius) {
-                affectedEntities.push(entityId);
-            }
-        });
-        
-        // Apply damage and knockback to affected entities
-        affectedEntities.forEach(targetId => {
-            if (targetId === attackerId) return; // Don't damage self
-            
-            const targetEntity = this.entityManager.getEntity(targetId);
-            if (!targetEntity) return;
-            
-            // Check if target is damageable
-            const targetAI = this.entityManager.getComponent(targetId, 'ai');
-            const targetHealth = this.entityManager.getComponent(targetId, 'health');
-            
-            // Apply damage to enemies and player
-            if (targetHealth && targetEntity.type !== 'planet' && targetEntity.type !== 'catastrophe') {
-                // Don't damage same faction
-                if (targetAI && targetAI.faction === attackerFaction) return;
-                
-                // Apply damage with falloff
-                const transform = this.entityManager.getComponent(targetId, 'transform');
-                if (transform) {
-                    const dx = transform.x - x;
-                    const dy = transform.y - y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const damageFalloff = 1 - (dist / radius);
-                    const finalDamage = Math.floor(damage * damageFalloff);
-                    
-                    if (finalDamage > 0) {
-                        this.applyDamage(targetId, finalDamage, attackerId);
-                        
-                        // Apply knockback
-                        if (knockback > 0 && dist > 0) {
-                            const physics = this.entityManager.getComponent(targetId, 'physics');
-                            if (physics) {
-                                const knockbackForce = knockback * damageFalloff;
-                                physics.velocity.x += (dx / dist) * knockbackForce / physics.mass;
-                                physics.velocity.y += (dy / dist) * knockbackForce / physics.mass;
-                            }
-                        }
-                    }
-                }
-            }
+        // Use the general area damage method
+        this.applyAreaDamage(data.x, data.y, data.radius, data.damage, data.attackerId, {
+            knockback: data.knockback,
+            falloff: true,
+            friendlyFire: false,
+            damageType: 'slam'
         });
         
         // Visual effect
         this.eventBus.emit('TITAN_SHOCKWAVE_VISUAL', {
-            x: x,
-            y: y,
-            radius: radius
+            x: data.x,
+            y: data.y,
+            radius: data.radius
         });
         
         // Sound effect
@@ -525,6 +487,68 @@ class CombatSystem {
             callback: (data) => { bossData = data; }
         });
         return bossData;
+    }
+    
+    // General area damage method for explosions, meteor impacts, etc.
+    applyAreaDamage(x, y, radius, damage, sourceId = null, options = {}) {
+        const {
+            falloff = true,           // Damage decreases with distance
+            knockback = 0,            // Knockback force
+            damageType = 'explosion', // For special resistances
+            excludeSelf = true,       // Don't damage source
+            friendlyFire = false      // Can damage allies
+        } = options;
+        
+        const entities = this.entityManager.query('transform', 'health');
+        const sourceEntity = sourceId ? this.entityManager.getEntity(sourceId) : null;
+        const sourceFaction = sourceEntity ? this.entityManager.getComponent(sourceId, 'faction') : null;
+        
+        entities.forEach(entityId => {
+            // Skip self if excluded
+            if (excludeSelf && entityId === sourceId) return;
+            
+            const transform = this.entityManager.getComponent(entityId, 'transform');
+            const entity = this.entityManager.getEntity(entityId);
+            
+            if (!transform || !entity) return;
+            
+            // Skip non-damageable entities
+            if (entity.type === 'planet' || entity.type === 'catastrophe' || entity.type === 'projectile') return;
+            
+            // Calculate distance
+            const dx = transform.x - x;
+            const dy = transform.y - y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist > radius) return;
+            
+            // Check friendly fire
+            if (!friendlyFire && sourceFaction) {
+                const targetFaction = this.entityManager.getComponent(entityId, 'faction');
+                if (targetFaction && targetFaction.name === sourceFaction.name) return;
+            }
+            
+            // Calculate damage with falloff
+            let finalDamage = damage;
+            if (falloff && dist > 0) {
+                const damageFalloff = 1 - (dist / radius);
+                finalDamage = Math.floor(damage * damageFalloff);
+            }
+            
+            if (finalDamage > 0) {
+                this.applyDamage(entityId, finalDamage, sourceId);
+                
+                // Apply knockback
+                if (knockback > 0 && dist > 0) {
+                    const physics = this.entityManager.getComponent(entityId, 'physics');
+                    if (physics) {
+                        const knockbackForce = knockback * (falloff ? (1 - dist / radius) : 1);
+                        physics.velocity.x += (dx / dist) * knockbackForce / physics.mass;
+                        physics.velocity.y += (dy / dist) * knockbackForce / physics.mass;
+                    }
+                }
+            }
+        });
     }
 }
 

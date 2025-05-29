@@ -1,5 +1,5 @@
 // BossSystem.js - Streamlined boss management system
-// Handles boss spawning, abilities, and defeat flow
+// Handles boss spawning, orchestration, and defeat flow
 
 class BossSystem {
     constructor(scene, eventBus, entityManager, entityFactory) {
@@ -7,124 +7,52 @@ class BossSystem {
         this.eventBus = eventBus;
         this.entityManager = entityManager;
         this.entityFactory = entityFactory;
-        
-        // Core boss state
-        this.state = {
-            active: false,
-            currentBossId: null,
-            bossNumber: 0,  // Track sequential boss number (1st boss, 2nd boss, etc.)
-            afterWaveNumber: 0,  // Track which wave just completed
-            abilityTimer: 0,
-            nextAbilityTime: 3000
-        };
-        
-        // Boss configuration
-        this.config = {
-            spawnDelay: 1000,
-            baseHealth: 800,
-            healthPerWave: 200,
-            baseDamage: 30,
-            damagePerWave: 10,
-            abilityInterval: 3000,
-            worldCenter: { x: 8000, y: 6000 }
-        };
-        
-        // Define simple boss types
-        this.bossTypes = this.defineBossTypes();
+        this.gameState = null; // Will be set by GameInitializer
     }
     
     init() {
         // Core event listeners
         this.eventBus.on('START_BOSS_PHASE', (data) => this.startBossPhase(data));
         this.eventBus.on('ENTITY_DESTROYED', (data) => this.onEntityDestroyed(data));
+        this.eventBus.on('BOSS_ABILITY_USED', (data) => this.onAbilityUsed(data));
         
         // Debug commands
         this.eventBus.on('SPAWN_DEBUG_BOSS', () => this.spawnDebugBoss());
     }
     
-    defineBossTypes() {
-        return [
-            {
-                name: 'Titan Destroyer',
-                color: 0xff6666,
-                scale: 2.5,
-                healthMultiplier: 3.0,
-                damageMultiplier: 2.0,
-                speedMultiplier: 0.5,
-                abilities: ['shockwave', 'summon'],
-                behavior: 'aggressive'
-            },
-            {
-                name: 'Phantom Lord',
-                color: 0x9966ff,
-                scale: 1.8,
-                healthMultiplier: 1.5,
-                damageMultiplier: 1.8,
-                speedMultiplier: 1.5,
-                abilities: ['teleport', 'multishot'],
-                behavior: 'tactical'
-            },
-            {
-                name: 'Void Reaper',
-                color: 0x6666ff,
-                scale: 2.0,
-                healthMultiplier: 2.0,
-                damageMultiplier: 1.5,
-                speedMultiplier: 1.0,
-                abilities: ['blackhole', 'beam'],
-                behavior: 'tactical'
-            },
-            {
-                name: 'Swarm Queen',
-                color: 0xff66ff,
-                scale: 2.2,
-                healthMultiplier: 2.5,
-                damageMultiplier: 1.2,
-                speedMultiplier: 0.8,
-                abilities: ['summon', 'heal'],
-                behavior: 'defensive'
-            },
-            {
-                name: 'Storm Bringer',
-                color: 0x66ffff,
-                scale: 2.0,
-                healthMultiplier: 2.0,
-                damageMultiplier: 2.0,
-                speedMultiplier: 1.2,
-                abilities: ['lightning', 'shockwave'],
-                behavior: 'aggressive'
-            }
-        ];
+    getBossTypes() {
+        return GameConstants.BOSSES.TYPES;
     }
     
     startBossPhase(data) {
         console.log('[BossSystem] Starting boss phase after wave', data.waveNumber);
         
-        this.state.afterWaveNumber = data.waveNumber;
-        this.state.bossNumber++;  // Increment boss count
-        this.state.abilityTimer = 0;
-        this.state.nextAbilityTime = this.config.abilityInterval;
+        const bossNumber = this.gameState.get('boss.bossNumber') + 1;
+        this.gameState.update('boss.afterWaveNumber', data.waveNumber);
+        this.gameState.update('boss.bossNumber', bossNumber);
         
         // Announce boss incoming
         this.eventBus.emit('BOSS_ANNOUNCEMENT', {
-            bossNumber: this.state.bossNumber,
+            bossNumber: bossNumber,
             afterWave: data.waveNumber,
             message: 'BOSS INCOMING!'
         });
         
         // Spawn boss after delay
-        this.scene.time.delayedCall(this.config.spawnDelay, () => {
+        this.scene.time.delayedCall(GameConstants.BOSSES.SPAWN_DELAY, () => {
             this.spawnBoss();
         });
     }
     
     spawnBoss() {
         // Select boss type based on sequential boss number
-        const bossTypeIndex = (this.state.bossNumber - 1) % this.bossTypes.length;
-        const bossType = this.bossTypes[bossTypeIndex];
+        const bossTypes = this.getBossTypes();
+        const bossNumber = this.gameState.get('boss.bossNumber');
+        const bossTypeIndex = (bossNumber - 1) % bossTypes.length;
+        const bossType = bossTypes[bossTypeIndex];
         
         // Calculate boss stats using boss number for scaling
-        const stats = this.calculateBossStats(bossType, this.state.bossNumber);
+        const stats = this.calculateBossStats(bossType, bossNumber);
         
         // Spawn position (random edge)
         const spawnPos = this.getRandomEdgePosition();
@@ -147,8 +75,8 @@ class BossSystem {
             return;
         }
         
-        this.state.active = true;
-        this.state.currentBossId = bossId;
+        this.gameState.update('boss.active', true);
+        this.gameState.update('boss.currentBossId', bossId);
         
         // Create boss health bar
         this.createBossHealthBar(stats.name, stats.health);
@@ -157,8 +85,8 @@ class BossSystem {
         this.eventBus.emit('BOSS_SPAWNED', {
             bossId: bossId,
             name: stats.name,
-            bossNumber: this.state.bossNumber,
-            afterWave: this.state.afterWaveNumber
+            bossNumber: bossNumber,
+            afterWave: this.gameState.get('boss.afterWaveNumber')
         });
         
         // Play boss music
@@ -166,8 +94,8 @@ class BossSystem {
     }
     
     calculateBossStats(bossType, bossNumber) {
-        const baseHealth = this.config.baseHealth + (bossNumber * this.config.healthPerWave);
-        const baseDamage = this.config.baseDamage + (bossNumber * this.config.damagePerWave);
+        const baseHealth = GameConstants.BOSSES.BASE_HEALTH + (bossNumber * GameConstants.BOSSES.HEALTH_PER_WAVE);
+        const baseDamage = GameConstants.BOSSES.BASE_DAMAGE + (bossNumber * GameConstants.BOSSES.DAMAGE_PER_WAVE);
         
         return {
             name: bossType.name,
@@ -184,231 +112,62 @@ class BossSystem {
     }
     
     update(deltaTime) {
-        if (!this.state.active || !this.state.currentBossId) return;
+        const active = this.gameState.get('boss.active');
+        const currentBossId = this.gameState.get('boss.currentBossId');
+        
+        if (!active || !currentBossId) return;
         
         // Check if boss still exists
-        const boss = this.entityManager.getEntity(this.state.currentBossId);
+        const boss = this.entityManager.getEntity(currentBossId);
         if (!boss || !boss.active) {
             this.endBossPhase();
             return;
         }
         
-        // Update health bar
-        const health = this.entityManager.getComponent(this.state.currentBossId, 'health');
+        // Update health bar and state
+        const health = this.entityManager.getComponent(currentBossId, 'health');
         if (health) {
-            this.updateBossHealthBar(health.current / health.max);
-        }
-        
-        // Update ability timer
-        this.state.abilityTimer += deltaTime * 1000;
-        if (this.state.abilityTimer >= this.state.nextAbilityTime) {
-            this.useRandomAbility();
-            this.state.abilityTimer = 0;
-            this.state.nextAbilityTime = this.config.abilityInterval + Math.random() * 2000;
+            const healthPercent = health.current / health.max;
+            this.updateBossHealthBar(healthPercent);
+            this.gameState.update('boss.healthPercent', Math.round(healthPercent * 100));
         }
     }
     
-    useRandomAbility() {
-        const boss = this.entityManager.getEntity(this.state.currentBossId);
-        if (!boss) return;
-        
-        const bossComponent = this.entityManager.getComponent(this.state.currentBossId, 'boss');
-        if (!bossComponent || !bossComponent.abilities) return;
-        
-        // Pick random ability
-        const ability = bossComponent.abilities[Math.floor(Math.random() * bossComponent.abilities.length)];
-        
-        console.log('[BossSystem] Boss using ability:', ability);
-        
-        // Execute ability
-        switch (ability) {
-            case 'shockwave':
-                this.executeShockwave();
-                break;
-            case 'summon':
-                this.executeSummon();
-                break;
-            case 'teleport':
-                this.executeTeleport();
-                break;
-            case 'multishot':
-                this.executeMultishot();
-                break;
-            case 'blackhole':
-                this.executeBlackhole();
-                break;
-            case 'beam':
-                this.executeBeam();
-                break;
-            case 'lightning':
-                this.executeLightning();
-                break;
-            case 'heal':
-                this.executeHeal();
-                break;
+    // Listen for ability events from AI system
+    onAbilityUsed(data) {
+        const currentBossId = this.gameState.get('boss.currentBossId');
+        if (data.bossId === currentBossId) {
+            console.log('[BossSystem] Boss used ability:', data.ability);
         }
-        
-        // Emit ability event for effects
-        this.eventBus.emit('BOSS_ABILITY_USED', {
-            bossId: this.state.currentBossId,
-            ability: ability
-        });
-    }
-    
-    // Ability implementations
-    executeShockwave() {
-        const transform = this.entityManager.getComponent(this.state.currentBossId, 'transform');
-        if (!transform) return;
-        
-        this.eventBus.emit('CREATE_SHOCKWAVE', {
-            x: transform.x,
-            y: transform.y,
-            radius: 400,
-            damage: 50,
-            force: 1000
-        });
-    }
-    
-    executeSummon() {
-        const transform = this.entityManager.getComponent(this.state.currentBossId, 'transform');
-        if (!transform) return;
-        
-        // Summon 3-5 minions
-        const count = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < count; i++) {
-            const angle = (i / count) * Math.PI * 2;
-            const distance = 150;
-            const x = transform.x + Math.cos(angle) * distance;
-            const y = transform.y + Math.sin(angle) * distance;
-            
-            // Create minion
-            const minionId = this.entityFactory.createEnemy('swarm', x, y, { x: 0, y: 0 }, 0.5);
-            
-            // Mark as boss minion
-            const ai = this.entityManager.getComponent(minionId, 'ai');
-            if (ai) {
-                ai.isBossMinion = true;
-            }
-        }
-    }
-    
-    executeTeleport() {
-        const newPos = this.getRandomPosition();
-        
-        this.eventBus.emit('TELEPORT_ENTITY', {
-            entityId: this.state.currentBossId,
-            x: newPos.x,
-            y: newPos.y
-        });
-        
-        // Update transform
-        const transform = this.entityManager.getComponent(this.state.currentBossId, 'transform');
-        if (transform) {
-            transform.x = newPos.x;
-            transform.y = newPos.y;
-        }
-        
-        // Update sprite
-        const sprite = this.scene.sprites.get(this.state.currentBossId);
-        if (sprite) {
-            sprite.setPosition(newPos.x, newPos.y);
-        }
-    }
-    
-    executeMultishot() {
-        const transform = this.entityManager.getComponent(this.state.currentBossId, 'transform');
-        if (!transform) return;
-        
-        // Fire 8 projectiles in all directions
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            
-            this.eventBus.emit('ENEMY_SHOOT', {
-                enemyId: this.state.currentBossId,
-                targetPosition: {
-                    x: transform.x + Math.cos(angle) * 1000,
-                    y: transform.y + Math.sin(angle) * 1000
-                },
-                projectileSpeed: 15,
-                projectileDamage: 30
-            });
-        }
-    }
-    
-    executeBlackhole() {
-        const transform = this.entityManager.getComponent(this.state.currentBossId, 'transform');
-        if (!transform) return;
-        
-        this.eventBus.emit('CREATE_BLACK_HOLE', {
-            x: transform.x,
-            y: transform.y,
-            radius: 600,
-            force: 800,
-            duration: 5000
-        });
-    }
-    
-    executeBeam() {
-        const player = this.entityManager.getEntitiesByType('player')[0];
-        if (!player) return;
-        
-        this.eventBus.emit('CREATE_BEAM', {
-            sourceId: this.state.currentBossId,
-            targetId: player,
-            damage: 5,
-            duration: 2000
-        });
-    }
-    
-    executeLightning() {
-        const player = this.entityManager.getEntitiesByType('player')[0];
-        if (!player) return;
-        
-        this.eventBus.emit('CREATE_LIGHTNING', {
-            sourceId: this.state.currentBossId,
-            targetId: player,
-            damage: 40,
-            chains: 2
-        });
-    }
-    
-    executeHeal() {
-        const health = this.entityManager.getComponent(this.state.currentBossId, 'health');
-        if (!health) return;
-        
-        const healAmount = Math.floor(health.max * 0.1);
-        health.current = Math.min(health.current + healAmount, health.max);
-        
-        this.eventBus.emit('BOSS_HEALED', {
-            bossId: this.state.currentBossId,
-            amount: healAmount
-        });
     }
     
     onEntityDestroyed(data) {
         // Check if it's our boss
-        if (data.id === this.state.currentBossId) {
+        const currentBossId = this.gameState.get('boss.currentBossId');
+        if (data.id === currentBossId) {
             console.log('[BossSystem] Boss defeated!');
             this.endBossPhase();
         }
     }
     
     endBossPhase() {
-        this.state.active = false;
-        this.state.currentBossId = null;
+        this.gameState.update('boss.active', false);
+        this.gameState.update('boss.currentBossId', null);
         
         // Remove health bar
         this.removeBossHealthBar();
         
         // Calculate rewards
-        const baseReward = 100;
-        const bossBonus = this.state.bossNumber * 50;
+        const bossNumber = this.gameState.get('boss.bossNumber');
+        const afterWaveNumber = this.gameState.get('boss.afterWaveNumber');
+        const baseReward = GameConstants.BOSSES.REWARDS.BASE_CREDITS;
+        const bossBonus = bossNumber * GameConstants.BOSSES.REWARDS.CREDITS_PER_BOSS;
         const totalCredits = baseReward + bossBonus;
         
         // Emit boss defeated event
         this.eventBus.emit('BOSS_DEFEATED', {
-            bossNumber: this.state.bossNumber,
-            afterWave: this.state.afterWaveNumber,
+            bossNumber: bossNumber,
+            afterWave: afterWaveNumber,
             rewards: {
                 credits: totalCredits
             }
@@ -448,24 +207,19 @@ class BossSystem {
     getRandomEdgePosition() {
         const edge = Math.floor(Math.random() * 4);
         const margin = 200;
+        const width = GameConstants.WORLD.WIDTH;
+        const height = GameConstants.WORLD.HEIGHT;
         
         switch (edge) {
             case 0: // Top
-                return { x: Math.random() * 16000, y: margin };
+                return { x: Math.random() * width, y: margin };
             case 1: // Right
-                return { x: 16000 - margin, y: Math.random() * 12000 };
+                return { x: width - margin, y: Math.random() * height };
             case 2: // Bottom
-                return { x: Math.random() * 16000, y: 12000 - margin };
+                return { x: Math.random() * width, y: height - margin };
             case 3: // Left
-                return { x: margin, y: Math.random() * 12000 };
+                return { x: margin, y: Math.random() * height };
         }
-    }
-    
-    getRandomPosition() {
-        return {
-            x: 1000 + Math.random() * 14000,
-            y: 1000 + Math.random() * 10000
-        };
     }
     
     // Debug methods
@@ -476,11 +230,10 @@ class BossSystem {
     
     getDebugInfo() {
         return {
-            active: this.state.active,
-            bossId: this.state.currentBossId,
-            bossNumber: this.state.bossNumber,
-            afterWave: this.state.afterWaveNumber,
-            abilityTimer: this.state.abilityTimer
+            active: this.gameState.get('boss.active'),
+            bossId: this.gameState.get('boss.currentBossId'),
+            bossNumber: this.gameState.get('boss.bossNumber'),
+            afterWave: this.gameState.get('boss.afterWaveNumber')
         };
     }
 }

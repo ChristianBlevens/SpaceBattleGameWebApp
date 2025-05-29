@@ -20,6 +20,7 @@ class GameInitializer {
         this.combatSystem = new CombatSystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.waveSystem = new WaveSystem(scene, this.eventBus, this.gameState, this.entityFactory);
         this.bossSystem = new BossSystem(scene, this.eventBus, this.entityManager, this.entityFactory);
+        this.bossSystem.gameState = this.gameState;
         this.abilitySystem = new AbilitySystem(scene, this.eventBus, this.entityManager, this.gameState);
         this.upgradeSystem = new UpgradeSystem(this.eventBus, this.gameState, this.entityManager);
         this.disasterSystem = new DisasterSystem(scene);
